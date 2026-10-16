@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Công cụ Gỡ băng Cuộc họp Tiếng Việt (ASR) kèm Dấu thời gian & Phân tách Lượt lời
-Hỗ trợ Faster-Whisper (CTranslate2) chạy Offline cục bộ trên CPU/GPU.
+Công cụ Gỡ băng Cuộc họp Đa Ngôn Ngữ (Tiếng Việt - Tiếng Anh - Tiếng Đức) kèm Dấu thời gian
+Hỗ trợ Faster-Whisper (CTranslate2) chạy Offline cục bộ trên CPU/GPU:
+- Tự động nhận diện ngôn ngữ (language="auto") hoặc chỉ định rõ: "vi" (Tiếng Việt), "en" (English), "de" (Deutsch).
 """
 
 import argparse
@@ -24,12 +25,13 @@ def transcribe_meeting_audio(
     audio_path: str,
     output_dir: str,
     model_size: str = "small",
+    language: str = "auto",
     device: str = "cpu",
     compute_type: str = "int8",
     domain_keywords: str = "",
 ):
     """
-    Thực hiện nhận dạng tiếng nói tiếng Việt từ tệp âm thanh cuộc họp,
+    Thực hiện nhận dạng tiếng nói đa ngôn ngữ (Tiếng Việt, Tiếng Anh, Tiếng Đức) từ tệp âm thanh cuộc họp,
     sử dụng bộ lọc khoảng lặng Silero VAD tích hợp để chống lặp từ.
     """
     if not os.path.isfile(audio_path):
@@ -46,17 +48,21 @@ def transcribe_meeting_audio(
     os.makedirs(output_dir, exist_ok=True)
     base_name = os.path.splitext(os.path.basename(audio_path))[0]
 
-    initial_prompt = "Biên bản cuộc họp công việc. Ghi nhận đầy đủ câu chữ tiếng Việt rõ ràng, chính xác."
+    initial_prompt = (
+        "Biên bản cuộc họp đa ngôn ngữ. Multilingual meeting minutes. Sitzungsprotokoll. "
+        "Ghi nhận chính xác Tiếng Việt, English, Deutsch."
+    )
     if domain_keywords.strip():
-        initial_prompt += f" Các thuật ngữ và tên riêng: {domain_keywords.strip()}."
+        initial_prompt += f" Keywords / Từ khóa: {domain_keywords.strip()}."
 
     print(f"[Đang khởi tạo mô hình ASR]: {model_size} ({device}, {compute_type})...")
     model = WhisperModel(model_size, device=device, compute_type=compute_type)
 
-    print(f"[Đang xử lý gỡ băng tệp âm thanh]: {audio_path}...")
+    lang_arg = None if language.lower() == "auto" else language.lower()
+    print(f"[Đang xử lý gỡ băng tệp âm thanh (Ngôn ngữ: {language})]: {audio_path}...")
     segments_gen, info = model.transcribe(
         audio_path,
-        language="vi",
+        language=lang_arg,
         beam_size=5,
         vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=700, speech_pad_ms=300),
@@ -64,6 +70,7 @@ def transcribe_meeting_audio(
         word_timestamps=True,
     )
 
+    detected_lang = (info.language or "vi").upper()
     transcript_segments = []
     txt_lines = []
 
@@ -79,11 +86,12 @@ def transcribe_meeting_audio(
             "start_seconds": round(seg.start, 2),
             "end_seconds": round(seg.end, 2),
             "timestamp": f"{start_str} - {end_str}",
+            "lang": detected_lang,
             "speaker": "NGUOI_PHAT_BIEU",
             "text": clean_text,
         }
         transcript_segments.append(segment_item)
-        line_str = f"[{start_str} - {end_str}] {clean_text}"
+        line_str = f"[{start_str} - {end_str}] [{detected_lang}] {clean_text}"
         txt_lines.append(line_str)
         print(line_str)
 
@@ -94,7 +102,8 @@ def transcribe_meeting_audio(
         "audio_file": os.path.abspath(audio_path),
         "processed_at": datetime.datetime.now().isoformat(),
         "duration_seconds": round(info.duration, 2),
-        "language": info.language,
+        "detected_language": info.language,
+        "language_probability": round(info.language_probability, 4),
         "model": model_size,
         "segments": transcript_segments,
     }
@@ -105,25 +114,28 @@ def transcribe_meeting_audio(
     with open(txt_out_path, "w", encoding="utf-8") as tf:
         tf.write("\n".join(txt_lines) + "\n")
 
-    print(f"\n[Hoàn tất gỡ băng]")
+    print(f"\n[Hoàn tất gỡ băng đa ngôn ngữ]")
+    print(f"- Ngôn ngữ nhận diện chính: {detected_lang} (Độ tin cậy: {info.language_probability:.2%})")
     print(f"- File JSON : {json_out_path}")
     print(f"- File TXT  : {txt_out_path}")
     return json_out_path
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Gỡ băng âm thanh cuộc họp tiếng Việt sang JSON/TXT.")
+    parser = argparse.ArgumentParser(description="Gỡ băng âm thanh cuộc họp đa ngôn ngữ (Việt/Anh/Đức) sang JSON/TXT.")
     parser.add_argument("--audio", required=True, help="Đường dẫn tệp âm thanh cuộc họp (.wav, .mp3, .m4a)")
     parser.add_argument("--output-dir", default=os.path.join(os.path.dirname(__file__), "..", "transcripts"), help="Thư mục xuất văn bản gỡ băng")
-    parser.add_argument("--model", default="small", help="Kích thước mô hình (small, medium, large-v3, vinai/PhoWhisper-medium)")
+    parser.add_argument("--model", default="small", help="Kích thước mô hình (small, medium, large-v3)")
+    parser.add_argument("--language", default="auto", choices=["auto", "vi", "en", "de"], help="Ngôn ngữ: auto (tự động), vi (Tiếng Việt), en (English), de (Deutsch)")
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"], help="Thiết bị chạy suy luận (cpu hoặc cuda)")
-    parser.add_argument("--keywords", default="", help="Danh sách từ khóa chuyên ngành hoặc tên đại biểu cách nhau bởi dấu phẩy")
+    parser.add_argument("--keywords", default="", help="Danh sách từ khóa chuyên ngành hoặc tên đại biểu (Việt/Anh/Đức)")
     args = parser.parse_args()
 
     transcribe_meeting_audio(
         audio_path=os.path.abspath(args.audio),
         output_dir=os.path.abspath(args.output_dir),
         model_size=args.model,
+        language=args.language,
         device=args.device,
         domain_keywords=args.keywords,
     )

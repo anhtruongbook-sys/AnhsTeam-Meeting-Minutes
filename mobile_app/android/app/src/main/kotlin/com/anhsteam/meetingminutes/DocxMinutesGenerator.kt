@@ -17,15 +17,159 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * Bộ Kết xuất Tệp Word OpenXML (.docx) Chuẩn Nghị định 30/2020/NĐ-CP & Rule 11:
+ * Bộ Kết xuất Tệp Word OpenXML (.docx) Đa Ngôn Ngữ (Tiếng Việt - Tiếng Anh - Tiếng Đức)
+ * Chuẩn Nghị định 30/2020/NĐ-CP, Rule 9 (Full Bilingual/Multilingual Parity) & Rule 11:
+ * - Hỗ trợ 4 chế độ ngôn ngữ biên bản:
+ *   1. "VI": Chuẩn Hành chính Tiếng Việt (Nghị định 30/2020/NĐ-CP)
+ *   2. "VI_EN": Song ngữ đối sánh Việt - Anh (Vietnamese - English)
+ *   3. "VI_DE": Song ngữ đối sánh Việt - Đức (Vietnamesisch - Deutsch)
+ *   4. "VI_EN_DE": Đa ngữ đối sánh Việt - Anh - Đức (Vietnamese - English - German)
  * - Khổ giấy A4 (11906 x 16838 dxa), Lề: Trên 20mm (1134), Dưới 20mm (1134), Trái 30mm (1701), Phải 15mm (850).
  * - Phông chữ Times New Roman 100%, màu chữ Đen tuyền (#000000) 100%.
- * - Bảng Quốc hiệu & Tiêu ngữ 2 cột ẩn viền.
  * - Tuyệt đối KHÔNG dùng ký tự xuống dòng mềm (<w:br/>) trong đoạn văn căn đều hai bên (<w:jc w:val="both"/>).
- * - Bảng phân công nhiệm vụ nền trắng tự nhiên, kẻ viền đơn màu đen 0.5pt (w:sz="4"), lặp lại tiêu đề khi sang trang (<w:tblHeader/>) và chống cắt ngang dòng (<w:cantSplit/>).
- * - Bảo toàn đầy đủ khai báo schema ECMA-376 (mc:Ignorable="w14 w15") chống lỗi Unreadable Content trên Word Mobile & Google Docs.
  */
 object DocxMinutesGenerator {
+
+    private data class LocalizedLabels(
+        val defaultDocTitle: String,
+        val section1Title: String,
+        val startTimeLabel: String,
+        val venueLabel: String,
+        val participantsLabel: String,
+        val chairLabel: String,
+        val secLabel: String,
+        val memberLabel: String,
+        val section2Title: String,
+        val speakerPrefix: String,
+        val timeMarkerLabel: String,
+        val translationPrefix: String,
+        val section3Title: String,
+        val actionTableIntro: String,
+        val colStt: String,
+        val colTask: String,
+        val colAssignee: String,
+        val colCoord: String,
+        val colDeadline: String,
+        val closingSentencePrefix: String,
+        val closingSentenceSuffix: String,
+        val sigSecretaryTitle: String,
+        val sigSecretaryHint: String,
+        val sigChairTitle: String,
+        val sigChairHint: String
+    )
+
+    private fun getLabelsForMode(mode: String): LocalizedLabels {
+        return when (mode) {
+            "VI_EN" -> LocalizedLabels(
+                defaultDocTitle = "BIÊN BẢN CUỘC HỌP / MEETING MINUTES",
+                section1Title = "I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ / TIME, VENUE AND PARTICIPANTS",
+                startTimeLabel = "1. Thời gian bắt đầu (Start Time)",
+                venueLabel = "2. Địa điểm / Hình thức họp (Venue / Format)",
+                participantsLabel = "3. Thành phần tham dự (Participants):",
+                chairLabel = "Chủ trì cuộc họp (Chairperson)",
+                secLabel = "Thư ký cuộc họp (Secretary)",
+                memberLabel = "Thành viên tham dự (Attendee)",
+                section2Title = "II. NỘI DUNG DIỄN BIẾN CUỘC HỌP / MEETING PROCEEDINGS & DISCUSSIONS",
+                speakerPrefix = "Ý kiến phát biểu của (Statement by)",
+                timeMarkerLabel = "Mốc thời gian / Timestamp",
+                translationPrefix = "Bản dịch / Translation",
+                section3Title = "III. KẾT LUẬN VÀ PHÂN CÔNG NHIỆM VỤ / CONCLUSIONS AND ACTION ITEMS",
+                actionTableIntro = "Bảng phân công nhiệm vụ triển khai / Action Items Assignment Table:",
+                colStt = "TT / No.",
+                colTask = "Nội dung công việc / Task Description",
+                colAssignee = "Chủ trì / Assignee",
+                colCoord = "Phối hợp / Support",
+                colDeadline = "Thời hạn / Deadline",
+                closingSentencePrefix = "Cuộc họp kết thúc vào lúc (The meeting adjourned at) ",
+                closingSentenceSuffix = ". Biên bản này đã được thông qua trước toàn thể thành viên dự họp và lập thành văn bản lưu hồ sơ / These minutes have been reviewed and approved by the participants for official record./.",
+                sigSecretaryTitle = "THƯ KÝ CUỘC HỌP / SECRETARY",
+                sigSecretaryHint = "(Ký và ghi rõ họ tên / Sign and print full name)",
+                sigChairTitle = "CHỦ TRÌ CUỘC HỌP / CHAIRPERSON",
+                sigChairHint = "(Ký, ghi rõ họ tên và đóng dấu / Sign, print full name and seal)"
+            )
+            "VI_DE" -> LocalizedLabels(
+                defaultDocTitle = "BIÊN BẢN CUỘC HỌP / SITZUNGSPROTOKOLL",
+                section1Title = "I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ / ZEIT, ORT UND TEILNEHMER",
+                startTimeLabel = "1. Thời gian bắt đầu (Beginn)",
+                venueLabel = "2. Địa điểm / Hình thức họp (Ort / Format)",
+                participantsLabel = "3. Thành phần tham dự (Teilnehmer):",
+                chairLabel = "Chủ trì cuộc họp (Sitzungsleitung)",
+                secLabel = "Thư ký cuộc họp (Protokollführung)",
+                memberLabel = "Thành viên tham dự (Teilnehmer/in)",
+                section2Title = "II. NỘI DUNG DIỄN BIẾN CUỘC HỌP / BESPRECHUNGSINHALT UND DISKUSSION",
+                speakerPrefix = "Ý kiến phát biểu của (Wortbeitrag von)",
+                timeMarkerLabel = "Mốc thời gian / Zeitstempel",
+                translationPrefix = "Bản dịch / Übersetzung",
+                section3Title = "III. KẾT LUẬN VÀ PHÂN CÔNG NHIỆM VỤ / BESCHLÜSSE UND AUFGABENVERTEILUNG",
+                actionTableIntro = "Bảng phân công nhiệm vụ triển khai / Aufgabenverteilungsplan:",
+                colStt = "TT / Nr.",
+                colTask = "Nội dung công việc / Aufgabenbeschreibung",
+                colAssignee = "Chủ trì / Verantwortlich",
+                colCoord = "Phối hợp / Koordination",
+                colDeadline = "Thời hạn / Frist",
+                closingSentencePrefix = "Cuộc họp kết thúc vào lúc (Ende der Sitzung um) ",
+                closingSentenceSuffix = ". Biên bản này đã được thông qua trước toàn thể thành viên dự họp và lập thành văn bản lưu hồ sơ / Dieses Protokoll wurde von den Teilnehmern genehmigt und zu den Akten genommen./.",
+                sigSecretaryTitle = "THƯ KÝ CUỘC HỌP / PROTOKOLLFÜHRER(IN)",
+                sigSecretaryHint = "(Ký và ghi rõ họ tên / Unterschrift und vollständiger Name)",
+                sigChairTitle = "CHỦ TRÌ CUỘC HỌP / SITZUNGSLEITER(IN)",
+                sigChairHint = "(Ký, ghi rõ họ tên và đóng dấu / Unterschrift, Name und Stempel)"
+            )
+            "VI_EN_DE" -> LocalizedLabels(
+                defaultDocTitle = "BIÊN BẢN CUỘC HỌP / MEETING MINUTES / SITZUNGSPROTOKOLL",
+                section1Title = "I. THỜI GIAN, ĐỊA ĐIỂM & THÀNH PHẦN / TIME, VENUE & PARTICIPANTS / ZEIT, ORT & TEILNEHMER",
+                startTimeLabel = "1. Thời gian bắt đầu (Start Time / Beginn)",
+                venueLabel = "2. Địa điểm / Hình thức (Venue / Ort & Format)",
+                participantsLabel = "3. Thành phần tham dự (Participants / Teilnehmer):",
+                chairLabel = "Chủ trì (Chairperson / Sitzungsleitung)",
+                secLabel = "Thư ký (Secretary / Protokollführung)",
+                memberLabel = "Thành viên (Attendee / Teilnehmer/in)",
+                section2Title = "II. NỘI DUNG CUỘC HỌP / MEETING PROCEEDINGS / BESPRECHUNGSINHALT",
+                speakerPrefix = "Ý kiến phát biểu của (Statement by / Wortbeitrag von)",
+                timeMarkerLabel = "Mốc thời gian / Time / Zeit",
+                translationPrefix = "Đối sánh ngôn ngữ / Translation / Übersetzung",
+                section3Title = "III. KẾT LUẬN & PHÂN CÔNG NHIỆM VỤ / CONCLUSIONS & ACTIONS / BESCHLÜSSE & AUFGABEN",
+                actionTableIntro = "Bảng phân công nhiệm vụ / Action Items / Aufgabenverteilung:",
+                colStt = "TT / No. / Nr.",
+                colTask = "Nội dung công việc / Task / Aufgabe",
+                colAssignee = "Chủ trì / Assignee / Verantwortlich",
+                colCoord = "Phối hợp / Support / Koordination",
+                colDeadline = "Thời hạn / Deadline / Frist",
+                closingSentencePrefix = "Cuộc họp kết thúc vào lúc (Adjourned at / Ende um) ",
+                closingSentenceSuffix = ". Biên bản này đã được thông qua và lưu hồ sơ / Approved by all participants / Von allen Teilnehmern genehmigt./.",
+                sigSecretaryTitle = "THƯ KÝ / SECRETARY / PROTOKOLLFÜHRUNG",
+                sigSecretaryHint = "(Ký, ghi rõ họ tên / Sign & Full Name / Unterschrift & Name)",
+                sigChairTitle = "CHỦ TRÌ / CHAIRPERSON / SITZUNGSLEITUNG",
+                sigChairHint = "(Ký, ghi rõ họ tên & đóng dấu / Sign & Seal / Unterschrift & Stempel)"
+            )
+            else -> LocalizedLabels(
+                defaultDocTitle = "BIÊN BẢN CUỘC HỌP",
+                section1Title = "I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ",
+                startTimeLabel = "1. Thời gian bắt đầu",
+                venueLabel = "2. Địa điểm / Hình thức họp",
+                participantsLabel = "3. Thành phần tham dự:",
+                chairLabel = "Chủ trì cuộc họp",
+                secLabel = "Thư ký cuộc họp",
+                memberLabel = "Thành viên tham dự",
+                section2Title = "II. NỘI DUNG DIỄN BIẾN CUỘC HỌP",
+                speakerPrefix = "Ý kiến phát biểu của",
+                timeMarkerLabel = "Mốc thời gian",
+                translationPrefix = "Dịch nghĩa / Ghi chú song ngữ",
+                section3Title = "III. KẾT LUẬN CUỘC HỌP VÀ PHÂN CÔNG NHIỆM VỤ",
+                actionTableIntro = "Bảng phân công nhiệm vụ triển khai:",
+                colStt = "TT",
+                colTask = "Nội dung công việc",
+                colAssignee = "Chủ trì thực hiện",
+                colCoord = "Phối hợp",
+                colDeadline = "Thời hạn",
+                closingSentencePrefix = "Cuộc họp kết thúc vào lúc ",
+                closingSentenceSuffix = ". Biên bản này đã được thông qua trước toàn thể thành viên dự họp và lập thành văn bản lưu hồ sơ./.",
+                sigSecretaryTitle = "THƯ KÝ CUỘC HỌP",
+                sigSecretaryHint = "(Ký và ghi rõ họ tên)",
+                sigChairTitle = "CHỦ TRÌ CUỘC HỌP",
+                sigChairHint = "(Ký, ghi rõ họ tên và đóng dấu nếu có)"
+            )
+        }
+    }
 
     private fun xmlEscape(input: String): String {
         val clean = input.replace("\r", " ").replace("\n", " ").trim()
@@ -39,7 +183,7 @@ object DocxMinutesGenerator {
 
     private fun buildRunXml(
         text: String,
-        halfPtSize: Int = 26, // 26 half-points = 13pt
+        halfPtSize: Int = 26,
         bold: Boolean = false,
         italic: Boolean = false,
         underline: Boolean = false
@@ -63,7 +207,7 @@ object DocxMinutesGenerator {
         bold: Boolean = false,
         italic: Boolean = false,
         underline: Boolean = false,
-        jc: String = "both", // "left", "center", "right", "both"
+        jc: String = "both",
         spaceBeforeDxa: Int = 60,
         spaceAfterDxa: Int = 60,
         firstLineIndentDxa: Int = 0
@@ -89,18 +233,26 @@ object DocxMinutesGenerator {
         jsonString: String
     ): Map<String, Any> {
         val root = JSONObject(jsonString)
+        val docLanguageMode = root.optString("docLanguageMode", "VI_EN_DE").ifBlank { "VI" }
+        val labels = getLabelsForMode(docLanguageMode)
+
         val orgName = root.optString("organizationName", "ANH'S TEAM").ifBlank { "ANH'S TEAM" }
         val govBody = root.optString("governingBody", "")
-        val docNumber = root.optString("documentNumber", "Số: 01/BB-AT")
+        val docNumber = root.optString("documentNumber", "Số: 01/2026/BB-AT")
         val locationDate = root.optString("locationDate", "Hà Nội, ngày 16 tháng 10 năm 2026")
-        val meetingTitle = root.optString("meetingTitle", "BIÊN BẢN CUỘC HỌP")
+        val customTitle = root.optString("meetingTitle", "").trim()
+        val meetingTitle = if (customTitle.isEmpty() || customTitle == "BIÊN BẢN CUỘC HỌP") {
+            labels.defaultDocTitle
+        } else {
+            customTitle
+        }
         val meetingSubject = root.optString("meetingSubject", "Về việc rà soát tiến độ và triển khai kế hoạch công tác")
         val startTime = root.optString("startTime", "08 giờ 30 phút ngày 16/10/2026")
         val endTime = root.optString("endTime", "11 giờ 00 phút cùng ngày")
         val venue = root.optString("venue", "Phòng họp trung tâm (Kết hợp trực tuyến)")
-        val chairName = root.optString("chairName", "Ông Nguyễn Văn A")
+        val chairName = root.optString("chairName", "Ông Trương Đức Anh")
         val chairTitle = root.optString("chairTitle", "Chủ trì cuộc họp")
-        val secName = root.optString("secretaryName", "Bà Lê Thị B")
+        val secName = root.optString("secretaryName", "Thư ký chuyên trách")
         val secTitle = root.optString("secretaryTitle", "Thư ký cuộc họp")
         val attendeesRaw = root.optString("attendeesList", "")
         val turnsArray = root.optJSONArray("speakerTurns") ?: JSONArray()
@@ -138,27 +290,27 @@ object DocxMinutesGenerator {
         bodyXml.append("</w:tc></w:tr></w:tbl>")
 
         // 2. Tên loại văn bản & Trích yếu
-        bodyXml.append(buildParagraphXml(meetingTitle.uppercase(Locale.getDefault()), halfPtSize = 28, bold = true, jc = "center", spaceBeforeDxa = 240, spaceAfterDxa = 40))
+        bodyXml.append(buildParagraphXml(meetingTitle.uppercase(Locale.getDefault()), halfPtSize = 27, bold = true, jc = "center", spaceBeforeDxa = 240, spaceAfterDxa = 40))
         bodyXml.append(buildParagraphXml(meetingSubject, halfPtSize = 26, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 180))
 
         // 3. Mục I: Thời gian, địa điểm và thành phần tham dự
-        bodyXml.append(buildParagraphXml("I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 120, spaceAfterDxa = 60))
-        bodyXml.append(buildParagraphXml("1. Thời gian bắt đầu: $startTime.", halfPtSize = 26, bold = false, jc = "left"))
-        bodyXml.append(buildParagraphXml("2. Địa điểm / Hình thức họp: $venue.", halfPtSize = 26, bold = false, jc = "left"))
-        bodyXml.append(buildParagraphXml("3. Thành phần tham dự:", halfPtSize = 26, bold = false, jc = "left"))
-        bodyXml.append(buildParagraphXml("- Chủ trì cuộc họp: $chairName ($chairTitle).", halfPtSize = 26, bold = false, jc = "left"))
-        bodyXml.append(buildParagraphXml("- Thư ký cuộc họp: $secName ($secTitle).", halfPtSize = 26, bold = false, jc = "left"))
+        bodyXml.append(buildParagraphXml(labels.section1Title, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 120, spaceAfterDxa = 60))
+        bodyXml.append(buildParagraphXml("${labels.startTimeLabel}: $startTime.", halfPtSize = 26, bold = false, jc = "left"))
+        bodyXml.append(buildParagraphXml("${labels.venueLabel}: $venue.", halfPtSize = 26, bold = false, jc = "left"))
+        bodyXml.append(buildParagraphXml(labels.participantsLabel, halfPtSize = 26, bold = false, jc = "left"))
+        bodyXml.append(buildParagraphXml("- ${labels.chairLabel}: $chairName ($chairTitle).", halfPtSize = 26, bold = false, jc = "left"))
+        bodyXml.append(buildParagraphXml("- ${labels.secLabel}: $secName ($secTitle).", halfPtSize = 26, bold = false, jc = "left"))
 
         if (attendeesRaw.isNotBlank()) {
             val attLines = attendeesRaw.split("\n", ";").map { it.trim() }.filter { it.isNotEmpty() }
             for (att in attLines) {
                 val cleanAtt = if (att.startsWith("-")) att.substring(1).trim() else att
-                bodyXml.append(buildParagraphXml("- Thành viên tham dự: $cleanAtt.", halfPtSize = 26, bold = false, jc = "left"))
+                bodyXml.append(buildParagraphXml("- ${labels.memberLabel}: $cleanAtt.", halfPtSize = 26, bold = false, jc = "left"))
             }
         }
 
-        // 4. Mục II: Nội dung cuộc họp
-        bodyXml.append(buildParagraphXml("II. NỘI DUNG DIỄN BIẾN CUỘC HỌP", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
+        // 4. Mục II: Nội dung diễn biến cuộc họp (Đa ngôn ngữ VI / EN / DE)
+        bodyXml.append(buildParagraphXml(labels.section2Title, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
 
         if (turnsArray.length() == 0) {
             bodyXml.append(buildParagraphXml("- (Chưa ghi nhận lượt phát biểu chi tiết).", halfPtSize = 26, italic = true, jc = "left"))
@@ -166,27 +318,46 @@ object DocxMinutesGenerator {
             for (i in 0 until turnsArray.length()) {
                 val turn = turnsArray.optJSONObject(i) ?: continue
                 val speaker = turn.optString("speaker", "Đại biểu")
+                val langTag = turn.optString("lang", "VI").uppercase(Locale.getDefault())
                 val timestamp = turn.optString("timestamp", "")
                 val content = turn.optString("content", "")
+                val translation = turn.optString("translation", "").trim()
 
                 val headerText = if (timestamp.isNotBlank()) {
-                    "${i + 1}. Ý kiến phát biểu của $speaker (Mốc thời gian: $timestamp):"
+                    "${i + 1}. [$langTag] ${labels.speakerPrefix} $speaker (${labels.timeMarkerLabel}: $timestamp):"
                 } else {
-                    "${i + 1}. Ý kiến phát biểu của $speaker:"
+                    "${i + 1}. [$langTag] ${labels.speakerPrefix} $speaker:"
                 }
                 bodyXml.append(buildParagraphXml(headerText, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 80, spaceAfterDxa = 40))
 
-                // Tách từng câu/ý thành các đoạn văn độc lập (Hard Return), tuyệt đối không dùng <w:br/>
+                // Mỗi dòng phát biểu gốc là 1 đoạn độc lập (Hard Return), không dùng <w:br/>
                 val sentences = content.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
                 for (line in sentences) {
                     val cleanLine = if (line.startsWith("-")) line.substring(1).trim() else line
                     bodyXml.append(buildParagraphXml("- $cleanLine", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
                 }
+
+                // Nếu có bản dịch đối sánh (Việt / Anh / Đức), in nghiêng chuẩn mực ngay bên dưới
+                if (translation.isNotEmpty()) {
+                    val transLines = translation.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                    for (tLine in transLines) {
+                        val cleanTrans = if (tLine.startsWith("-")) tLine.substring(1).trim() else tLine
+                        bodyXml.append(
+                            buildParagraphXml(
+                                "- [${labels.translationPrefix}]: $cleanTrans",
+                                halfPtSize = 25,
+                                italic = true,
+                                jc = "both",
+                                firstLineIndentDxa = 425
+                            )
+                        )
+                    }
+                }
             }
         }
 
         // 5. Mục III: Kết luận và phân công nhiệm vụ
-        bodyXml.append(buildParagraphXml("III. KẾT LUẬN CUỘC HỌP VÀ PHÂN CÔNG NHIỆM VỤ", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
+        bodyXml.append(buildParagraphXml(labels.section3Title, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
 
         if (conclusionsArray.length() > 0) {
             for (i in 0 until conclusionsArray.length()) {
@@ -199,9 +370,8 @@ object DocxMinutesGenerator {
         }
 
         if (actionItemsArray.length() > 0) {
-            bodyXml.append(buildParagraphXml("Bảng phân công nhiệm vụ triển khai:", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 100, spaceAfterDxa = 60))
+            bodyXml.append(buildParagraphXml(labels.actionTableIntro, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 100, spaceAfterDxa = 60))
 
-            // Bảng nền trắng tự nhiên, viền đơn màu đen mảnh 0.5pt (sz=4)
             bodyXml.append("<w:tbl><w:tblPr>")
             bodyXml.append("<w:tblW w:w=\"9355\" w:type=\"dxa\"/>")
             bodyXml.append("<w:jc w:val=\"center\"/>")
@@ -212,8 +382,7 @@ object DocxMinutesGenerator {
             bodyXml.append("</w:tblBorders></w:tblPr>")
             bodyXml.append("<w:tblGrid><w:gridCol w:w=\"680\"/><w:gridCol w:w=\"3855\"/><w:gridCol w:w=\"2000\"/><w:gridCol w:w=\"1410\"/><w:gridCol w:w=\"1410\"/></w:tblGrid>")
 
-            // Dòng tiêu đề bảng (tblHeader + cantSplit)
-            val headers = listOf("TT", "Nội dung công việc", "Chủ trì thực hiện", "Phối hợp", "Thời hạn")
+            val headers = listOf(labels.colStt, labels.colTask, labels.colAssignee, labels.colCoord, labels.colDeadline)
             val widths = listOf(680, 3855, 2000, 1410, 1410)
             bodyXml.append("<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>")
             for (idx in headers.indices) {
@@ -223,7 +392,6 @@ object DocxMinutesGenerator {
             }
             bodyXml.append("</w:tr>")
 
-            // Các dòng dữ liệu nhiệm vụ
             for (i in 0 until actionItemsArray.length()) {
                 val item = actionItemsArray.optJSONObject(i) ?: continue
                 val stt = (i + 1).toString()
@@ -250,7 +418,7 @@ object DocxMinutesGenerator {
         // 6. Thời gian kết thúc & Bảng chữ ký xác nhận
         bodyXml.append(
             buildParagraphXml(
-                "Cuộc họp kết thúc vào lúc $endTime. Biên bản này đã được thông qua trước toàn thể thành viên dự họp và lập thành văn bản lưu hồ sơ./.",
+                "${labels.closingSentencePrefix}$endTime${labels.closingSentenceSuffix}",
                 halfPtSize = 26,
                 bold = false,
                 jc = "both",
@@ -273,19 +441,18 @@ object DocxMinutesGenerator {
 
         // Chữ ký Thư ký
         bodyXml.append("<w:tc><w:tcPr><w:tcW w:w=\"4677\" w:type=\"dxa\"/></w:tcPr>")
-        bodyXml.append(buildParagraphXml("THƯ KÝ CUỘC HỌP", halfPtSize = 25, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 20))
-        bodyXml.append(buildParagraphXml("(Ký và ghi rõ họ tên)", halfPtSize = 23, italic = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 960))
+        bodyXml.append(buildParagraphXml(labels.sigSecretaryTitle, halfPtSize = 24, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 20))
+        bodyXml.append(buildParagraphXml(labels.sigSecretaryHint, halfPtSize = 22, italic = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 960))
         bodyXml.append(buildParagraphXml(secName, halfPtSize = 25, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 0))
         bodyXml.append("</w:tc>")
 
         // Chữ ký Chủ trì
         bodyXml.append("<w:tc><w:tcPr><w:tcW w:w=\"4678\" w:type=\"dxa\"/></w:tcPr>")
-        bodyXml.append(buildParagraphXml("CHỦ TRÌ CUỘC HỌP", halfPtSize = 25, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 20))
-        bodyXml.append(buildParagraphXml("(Ký, ghi rõ họ tên và đóng dấu nếu có)", halfPtSize = 23, italic = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 960))
+        bodyXml.append(buildParagraphXml(labels.sigChairTitle, halfPtSize = 24, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 20))
+        bodyXml.append(buildParagraphXml(labels.sigChairHint, halfPtSize = 22, italic = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 960))
         bodyXml.append(buildParagraphXml(chairName, halfPtSize = 25, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 0))
         bodyXml.append("</w:tc></w:tr></w:tbl>")
 
-        // Thiết lập khổ giấy A4 (11906 x 16838 dxa) và lề chuẩn Nghị định 30/2020/NĐ-CP
         bodyXml.append("<w:sectPr>")
         bodyXml.append("<w:pgSz w:w=\"11906\" w:h=\"16838\"/>")
         bodyXml.append("<w:pgMar w:top=\"1134\" w:right=\"850\" w:bottom=\"1134\" w:left=\"1701\" w:header=\"708\" w:footer=\"708\" w:gutter=\"0\"/>")
@@ -337,7 +504,7 @@ object DocxMinutesGenerator {
 
         if (!outputDir.exists()) outputDir.mkdirs()
         val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val fileName = "BienBanCuocHop_AnhsTeam_$ts.docx"
+        val fileName = "BienBanHop_AnhsTeam_${docLanguageMode}_$ts.docx"
         val outFile = File(outputDir, fileName)
 
         ZipOutputStream(FileOutputStream(outFile)).use { zos ->

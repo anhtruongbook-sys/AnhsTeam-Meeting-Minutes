@@ -21,7 +21,7 @@ class _AnhsTeamMeetingMinutesAppState extends State<AnhsTeamMeetingMinutesApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: "Anh's TEAM - Biên Bản Cuộc Họp",
+      title: "Anh's TEAM - Biên Bản Họp Đa Ngữ",
       debugShowCheckedModeBanner: false,
       themeMode: _isDark ? ThemeMode.dark : ThemeMode.light,
       theme: ThemeData(
@@ -48,19 +48,25 @@ class _AnhsTeamMeetingMinutesAppState extends State<AnhsTeamMeetingMinutesApp> {
 
 class SpeakerTurnItem {
   String speaker;
+  String lang; // 'VI', 'EN', 'DE'
   String timestamp;
   String content;
+  String translation;
 
   SpeakerTurnItem({
     required this.speaker,
+    required this.lang,
     required this.timestamp,
     required this.content,
+    this.translation = '',
   });
 
   Map<String, dynamic> toJson() => {
         'speaker': speaker,
+        'lang': lang,
         'timestamp': timestamp,
         'content': content,
+        'translation': translation,
       };
 }
 
@@ -107,34 +113,44 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
   List<Map<String, dynamic>> _exportedDocx = [];
   Timer? _pollTimer;
 
+  // Ngôn ngữ nhận diện giọng nói trực tiếp: 'vi-VN', 'en-US', 'de-DE'
+  String _selectedSpeechLocale = 'vi-VN';
+
+  // Chế độ ngôn ngữ xuất Biên bản Word (.docx): 'VI', 'VI_EN', 'VI_DE', 'VI_EN_DE'
+  String _docLanguageMode = 'VI_EN_DE';
+
   // Controllers cho thông tin hành chính của Biên bản cuộc họp
   final TextEditingController _govBodyCtrl = TextEditingController(text: '');
   final TextEditingController _orgNameCtrl = TextEditingController(text: "ANH'S TEAM");
   final TextEditingController _docNumCtrl = TextEditingController(text: 'Số: 01/2026/BB-AT');
   final TextEditingController _locDateCtrl =
       TextEditingController(text: 'Hà Nội, ngày 16 tháng 10 năm 2026');
-  final TextEditingController _meetingTitleCtrl =
-      TextEditingController(text: 'BIÊN BẢN CUỘC HỌP');
+  final TextEditingController _meetingTitleCtrl = TextEditingController(
+      text: 'BIÊN BẢN CUỘC HỌP / MEETING MINUTES / SITZUNGSPROTOKOLL');
   final TextEditingController _meetingSubjectCtrl = TextEditingController(
-      text: 'Về việc rà soát tiến độ công việc và phân công nhiệm vụ triển khai dự án');
+      text:
+          'Về việc rà soát tiến độ kỹ thuật dự án quốc tế / Technical Progress Review & Besprechung des Projektfortschritts');
   final TextEditingController _startTimeCtrl =
-      TextEditingController(text: '08 giờ 30 phút ngày 16/10/2026');
+      TextEditingController(text: '08 giờ 30 phút ngày 16/10/2026 (08:30 AM)');
   final TextEditingController _endTimeCtrl =
-      TextEditingController(text: '11 giờ 00 phút cùng ngày');
+      TextEditingController(text: '11 giờ 00 phút cùng ngày (11:00 AM)');
   final TextEditingController _venueCtrl =
-      TextEditingController(text: 'Phòng họp trung tâm (Kết hợp trực tuyến)');
+      TextEditingController(text: 'Phòng họp trung tâm & Trực tuyến (Hybrid Meeting / Online-Konferenz)');
   final TextEditingController _chairNameCtrl = TextEditingController(text: 'Ông Trương Đức Anh');
   final TextEditingController _chairTitleCtrl =
-      TextEditingController(text: "Trưởng nhóm Anh's TEAM - Chủ trì");
+      TextEditingController(text: "Trưởng nhóm Anh's TEAM / Team Leader / Projektleiter");
   final TextEditingController _secNameCtrl = TextEditingController(text: 'Thư ký chuyên trách');
-  final TextEditingController _secTitleCtrl = TextEditingController(text: 'Thư ký cuộc họp');
+  final TextEditingController _secTitleCtrl =
+      TextEditingController(text: 'Thư ký cuộc họp / Secretary / Protokollführung');
   final TextEditingController _attendeesCtrl = TextEditingController(
-      text: 'Các thành viên nhóm dự án và đại diện các bộ phận chuyên môn');
+      text:
+          'Mr. John Miller (Technical Advisor); Herr Klaus Weber (Chefingenieur); Các thành viên chuyên môn của Anh\'s TEAM');
 
   // Controllers cho việc thêm nhanh lượt phát biểu tại Tab 1
   final TextEditingController _liveSpeakerCtrl =
       TextEditingController(text: 'Ông Trương Đức Anh (Chủ trì)');
   final TextEditingController _liveContentCtrl = TextEditingController();
+  final TextEditingController _liveTranslationCtrl = TextEditingController();
 
   // Controllers cho việc thêm Kết luận và Nhiệm vụ tại Tab 2
   final TextEditingController _newConclusionCtrl = TextEditingController();
@@ -148,35 +164,50 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
 
   final List<SpeakerTurnItem> _speakerTurns = [
     SpeakerTurnItem(
-      speaker: 'Ông Trương Đức Anh (Chủ trì)',
+      speaker: 'Ông Trương Đức Anh (Chủ trì / Chairperson)',
+      lang: 'VI',
       timestamp: '00:00:15',
       content:
-          'Tuyên bố lý do cuộc họp, quán triệt mục tiêu rà soát tiến độ thực hiện các hạng mục công việc trọng tâm và yêu cầu các bộ phận báo cáo số liệu thực tế.',
+          'Tuyên bố lý do cuộc họp, quán triệt mục tiêu rà soát tiến độ thực hiện các hạng mục kỹ thuật giữa ba đầu cầu Việt Nam, Anh và Cộng hòa Liên bang Đức.',
+      translation:
+          'Declared the meeting objective to review technical milestones across the Vietnam, UK/US, and German engineering teams.',
     ),
     SpeakerTurnItem(
-      speaker: 'Đại diện Bộ phận Kỹ thuật',
-      timestamp: '00:05:40',
+      speaker: 'Mr. John Miller (Technical Advisor)',
+      lang: 'EN',
+      timestamp: '00:04:30',
       content:
-          'Báo cáo kết quả hoàn thành giai đoạn 1, đề xuất phương án tối ưu hóa quy trình phối hợp dữ liệu và thống nhất lịch kiểm tra nghiệm thu nội bộ.',
+          'We have completed the phase-one system architecture verification and confirmed that all interface specifications meet the international standards.',
+      translation:
+          'Chúng tôi đã hoàn thành kiểm tra kiến trúc hệ thống giai đoạn 1 và xác nhận toàn bộ thông số giao diện đáp ứng tiêu chuẩn quốc tế.',
+    ),
+    SpeakerTurnItem(
+      speaker: 'Herr Klaus Weber (Chefingenieur)',
+      lang: 'DE',
+      timestamp: '00:09:15',
+      content:
+          'Die technische Dokumentation und die Sicherheitsprüfungen wurden planmäßig abgeschlossen. Wir empfehlen die Freigabe für die nächste Projektphase.',
+      translation:
+          'Hồ sơ kỹ thuật và các kiểm định an toàn đã hoàn tất đúng kế hoạch. Chúng tôi kiến nghị phê duyệt chuyển sang giai đoạn tiếp theo của dự án.',
     ),
   ];
 
   final List<String> _conclusions = [
-    'Thống nhất thông qua báo cáo tiến độ của Bộ phận Kỹ thuật và phương án điều phối kế hoạch giai đoạn tiếp theo.',
-    'Yêu cầu các thành viên phụ trách hoàn thành đúng thời hạn trong bảng phân công nhiệm vụ và báo cáo kết quả trước kỳ họp giao ban tuần tới.',
+    'Thống nhất thông qua báo cáo kỹ thuật của các chuyên gia quốc tế và phê duyệt lộ trình triển khai giai đoạn tiếp theo / Approved the technical report and next-phase schedule / Dem technischen Bericht und dem Zeitplan wurde zugestimmt.',
+    'Yêu cầu các bộ phận hoàn thành bàn giao hồ sơ đa ngôn ngữ đúng thời hạn trong bảng phân công nhiệm vụ.',
   ];
 
   final List<ActionTaskItem> _actionItems = [
     ActionTaskItem(
-      task: 'Hoàn thiện hồ sơ kỹ thuật và danh mục kiểm tra chất lượng',
-      assignee: 'Bộ phận Kỹ thuật',
-      coordinator: 'Bộ phận Quản lý dự án',
+      task: 'Hoàn thiện hồ sơ kỹ thuật song ngữ / Finalize technical dossier / Technische Unterlagen fertigstellen',
+      assignee: 'Bộ phận Kỹ thuật & Herr Klaus Weber',
+      coordinator: 'Mr. John Miller',
       deadline: '22/10/2026',
     ),
     ActionTaskItem(
-      task: 'Tổng hợp báo cáo tiến độ và gửi biên bản cuộc họp cho các bên liên quan',
+      task: 'Ban hành Biên bản cuộc họp đa ngôn ngữ (Việt - Anh - Đức) cho các bên liên quan',
       assignee: 'Thư ký cuộc họp',
-      coordinator: 'Văn phòng nhóm',
+      coordinator: "Văn phòng Anh's TEAM",
       deadline: '17/10/2026',
     ),
   ];
@@ -207,6 +238,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     _attendeesCtrl.dispose();
     _liveSpeakerCtrl.dispose();
     _liveContentCtrl.dispose();
+    _liveTranslationCtrl.dispose();
     _newConclusionCtrl.dispose();
     _newTaskNameCtrl.dispose();
     _newTaskAssigneeCtrl.dispose();
@@ -261,6 +293,12 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     return '${hrs.toString().padLeft(2, '0')}:${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
+  String _localeToShortTag(String locale) {
+    if (locale.startsWith('en')) return 'EN';
+    if (locale.startsWith('de')) return 'DE';
+    return 'VI';
+  }
+
   Future<void> _toggleMeetingRecording() async {
     final isRec = _status['isRecording'] == true;
     if (isRec) {
@@ -296,7 +334,9 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
       await _refreshStatusOnly();
     } else {
       try {
-        await _channel.invokeMethod('startVoiceDictation');
+        await _channel.invokeMethod('startVoiceDictation', {
+          'locale': _selectedSpeechLocale,
+        });
         await _refreshStatusOnly();
       } on PlatformException catch (e) {
         if (mounted) {
@@ -327,21 +367,44 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           speaker: _liveSpeakerCtrl.text.trim().isEmpty
               ? 'Đại biểu phát biểu'
               : _liveSpeakerCtrl.text.trim(),
+          lang: _localeToShortTag(_selectedSpeechLocale),
           timestamp: ts,
           content: text,
+          translation: _liveTranslationCtrl.text.trim(),
         ),
       );
       _liveContentCtrl.clear();
+      _liveTranslationCtrl.clear();
       _lastSyncedSpeech = '';
     });
     _channel.invokeMethod('clearSpeechBuffer');
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Đã thêm lượt phát biểu vào Biên bản cuộc họp.')),
+      SnackBar(
+        content: Text(
+          'Đã thêm lượt phát biểu [${_localeToShortTag(_selectedSpeechLocale)}] vào Biên bản cuộc họp.',
+        ),
+      ),
     );
+  }
+
+  void _applyDocLanguageModeTitle(String mode) {
+    setState(() {
+      _docLanguageMode = mode;
+      if (mode == 'VI') {
+        _meetingTitleCtrl.text = 'BIÊN BẢN CUỘC HỌP';
+      } else if (mode == 'VI_EN') {
+        _meetingTitleCtrl.text = 'BIÊN BẢN CUỘC HỌP / MEETING MINUTES';
+      } else if (mode == 'VI_DE') {
+        _meetingTitleCtrl.text = 'BIÊN BẢN CUỘC HỌP / SITZUNGSPROTOKOLL';
+      } else {
+        _meetingTitleCtrl.text = 'BIÊN BẢN CUỘC HỌP / MEETING MINUTES / SITZUNGSPROTOKOLL';
+      }
+    });
   }
 
   Map<String, dynamic> _buildMinutesJsonMap() {
     return {
+      'docLanguageMode': _docLanguageMode,
       'governingBody': _govBodyCtrl.text.trim(),
       'organizationName': _orgNameCtrl.text.trim(),
       'documentNumber': _docNumCtrl.text.trim(),
@@ -374,34 +437,45 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     sb.writeln(_meetingTitleCtrl.text.trim().toUpperCase());
     sb.writeln(_meetingSubjectCtrl.text.trim());
     sb.writeln('');
-    sb.writeln('I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ');
-    sb.writeln('1. Thời gian bắt đầu: ${_startTimeCtrl.text.trim()}.');
-    sb.writeln('2. Địa điểm / Hình thức họp: ${_venueCtrl.text.trim()}.');
-    sb.writeln('3. Thành phần tham dự:');
-    sb.writeln('- Chủ trì cuộc họp: ${_chairNameCtrl.text.trim()} (${_chairTitleCtrl.text.trim()}).');
-    sb.writeln('- Thư ký cuộc họp: ${_secNameCtrl.text.trim()} (${_secTitleCtrl.text.trim()}).');
+    if (_docLanguageMode == 'VI_EN_DE') {
+      sb.writeln('I. THỜI GIAN, ĐỊA ĐIỂM & THÀNH PHẦN / TIME, VENUE & PARTICIPANTS / ZEIT, ORT & TEILNEHMER');
+    } else if (_docLanguageMode == 'VI_EN') {
+      sb.writeln('I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ / TIME, VENUE AND PARTICIPANTS');
+    } else if (_docLanguageMode == 'VI_DE') {
+      sb.writeln('I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ / ZEIT, ORT UND TEILNEHMER');
+    } else {
+      sb.writeln('I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ');
+    }
+    sb.writeln('1. Thời gian bắt đầu (Start / Beginn): ${_startTimeCtrl.text.trim()}.');
+    sb.writeln('2. Địa điểm / Hình thức (Venue / Ort): ${_venueCtrl.text.trim()}.');
+    sb.writeln('3. Thành phần tham dự (Participants / Teilnehmer):');
+    sb.writeln('- Chủ trì (Chair / Leitung): ${_chairNameCtrl.text.trim()} (${_chairTitleCtrl.text.trim()}).');
+    sb.writeln('- Thư ký (Secretary / Protokoll): ${_secNameCtrl.text.trim()} (${_secTitleCtrl.text.trim()}).');
     if (_attendeesCtrl.text.trim().isNotEmpty) {
-      sb.writeln('- Thành viên tham dự: ${_attendeesCtrl.text.trim()}.');
+      sb.writeln('- Thành viên (Attendees / Teilnehmer): ${_attendeesCtrl.text.trim()}.');
     }
     sb.writeln('');
-    sb.writeln('II. NỘI DUNG DIỄN BIẾN CUỘC HỌP');
+    sb.writeln('II. NỘI DUNG CUỘC HỌP / MEETING PROCEEDINGS / BESPRECHUNGSINHALT');
     for (int i = 0; i < _speakerTurns.length; i++) {
       final t = _speakerTurns[i];
-      sb.writeln('${i + 1}. Ý kiến phát biểu của ${t.speaker} (Mốc: ${t.timestamp}):');
+      sb.writeln('${i + 1}. [${t.lang}] Phát biểu của ${t.speaker} (Mốc: ${t.timestamp}):');
       for (final line in t.content.split('\n')) {
         if (line.trim().isNotEmpty) {
           sb.writeln('- ${line.trim()}');
         }
       }
+      if (t.translation.trim().isNotEmpty) {
+        sb.writeln('  -> [Đối sánh ngôn ngữ / Translation / Übersetzung]: ${t.translation.trim()}');
+      }
     }
     sb.writeln('');
-    sb.writeln('III. KẾT LUẬN CUỘC HỌP VÀ PHÂN CÔNG NHIỆM VỤ');
+    sb.writeln('III. KẾT LUẬN & PHÂN CÔNG NHIỆM VỤ / CONCLUSIONS & ACTIONS / BESCHLÜSSE & AUFGABEN');
     for (final c in _conclusions) {
       sb.writeln('- $c');
     }
     if (_actionItems.isNotEmpty) {
       sb.writeln('');
-      sb.writeln('Bảng phân công nhiệm vụ:');
+      sb.writeln('Bảng phân công nhiệm vụ / Action Items / Aufgabenverteilung:');
       for (int i = 0; i < _actionItems.length; i++) {
         final a = _actionItems[i];
         sb.writeln(
@@ -483,12 +557,12 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      "Anh's TEAM • Biên Bản Họp",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                      "Anh's TEAM • Biên Bản Đa Ngữ",
+                      style: TextStyle(fontSize: 15.8, fontWeight: FontWeight.w800),
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      'Thu âm DSP • Gỡ băng • Xuất Word NĐ 30/2020',
+                      'Tiếng Việt • English • Deutsch | Chuẩn NĐ 30/2020',
                       style: TextStyle(
                         fontSize: 11.2,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -545,7 +619,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     );
   }
 
-  /// TAB 1: THU ÂM PHÒNG HỌP & GỠ BĂNG TRỰC TIẾP (TUÂN THỦ RULE 14 - SINGLE-LEVEL CARD)
+  /// TAB 1: THU ÂM PHÒNG HỌP & GỠ BĂNG ĐA NGÔN NGỮ VIỆT - ANH - ĐỨC (SINGLE-LEVEL CARD - RULE 14)
   Widget _buildRecordAndTranscribeTab({
     required bool micGranted,
     required bool isRecording,
@@ -574,7 +648,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               children: [
                 const Expanded(
                   child: Text(
-                    'Cần cấp quyền Microphone để thu âm phòng họp và nhận diện giọng nói tiếng Việt.',
+                    'Cần cấp quyền Microphone để thu âm phòng họp và nhận diện giọng nói Việt / Anh / Đức.',
                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -591,7 +665,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
             ),
           ),
 
-        // DUY NHẤT 1 THẺ ĐƠN CẤP (SINGLE-LEVEL CARD) CHO BỘ ĐIỀU KHIỂN THU ÂM & GỠ BĂNG
+        // DUY NHẤT 1 THẺ ĐƠN CẤP (SINGLE-LEVEL CARD) CHO BỘ ĐIỀU KHIỂN THU ÂM & GỠ BĂNG ĐA NGÔN NGỮ
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -696,13 +770,13 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 child: Divider(height: 1),
               ),
 
-              // KHU VỰC GỠ BĂNG TIẾNG VIỆT & GHI NHẬN LƯỢT PHÁT BIỂU (PHẲNG HOÀN TOÀN)
+              // KHU VỰC CHỌN NGÔN NGỮ NHẬN DIỆN GIỌNG NÓI (TIẾNG VIỆT / TIẾNG ANH / TIẾNG ĐỨC)
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Ghi nhận Lượt phát biểu vào Biên bản',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                    'Ngôn ngữ phát biểu (VI / EN / DE):',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.2),
                   ),
                   TextButton.icon(
                     style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
@@ -713,21 +787,50 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                       color: isListeningSpeech ? Colors.redAccent : cs.primary,
                     ),
                     label: Text(
-                      isListeningSpeech ? 'Đang nghe (Dừng)' : 'Đọc Giọng Nói (vi-VN)',
+                      isListeningSpeech
+                          ? 'Đang nghe ${_localeToShortTag(_selectedSpeechLocale)} (Dừng)'
+                          : 'Đọc Giọng Nói (${_localeToShortTag(_selectedSpeechLocale)})',
                       style: TextStyle(
                         fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                         color: isListeningSpeech ? Colors.redAccent : cs.primary,
                       ),
                     ),
                   ),
                 ],
               ),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final langOpt in [
+                      {'locale': 'vi-VN', 'label': '🇻🇳 Tiếng Việt (vi-VN)'},
+                      {'locale': 'en-US', 'label': '🇬🇧 English (en-US)'},
+                      {'locale': 'de-DE', 'label': '🇩🇪 Tiếng Đức - Deutsch (de-DE)'},
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          label: Text(langOpt['label']!, style: const TextStyle(fontSize: 12)),
+                          selected: _selectedSpeechLocale == langOpt['locale'],
+                          side: BorderSide.none,
+                          showCheckmark: false,
+                          visualDensity: VisualDensity.compact,
+                          onSelected: (_) {
+                            setState(() {
+                              _selectedSpeechLocale = langOpt['locale']!;
+                            });
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
               if (partialSpeech.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.only(top: 6, bottom: 4),
                   child: Text(
-                    'Đang nhận diện: "$partialSpeech..."',
+                    'Đang nhận diện [${_localeToShortTag(_selectedSpeechLocale)}]: "$partialSpeech..."',
                     style: const TextStyle(
                       fontSize: 12,
                       fontStyle: FontStyle.italic,
@@ -736,16 +839,17 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   ),
                 ),
 
-              // Chọn nhanh vai trò người phát biểu bằng Chip phẳng (side: BorderSide.none)
+              const SizedBox(height: 6),
+              // Chọn nhanh đại biểu phát biểu bằng Chip phẳng (side: BorderSide.none)
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
                     for (final preset in [
                       '${_chairNameCtrl.text} (Chủ trì)',
+                      'Mr. John Miller (Technical Advisor)',
+                      'Herr Klaus Weber (Chefingenieur)',
                       '${_secNameCtrl.text} (Thư ký)',
-                      'Đại diện Bộ phận Kỹ thuật',
-                      'Đại diện Đơn vị Tư vấn',
                       'Đại biểu dự họp',
                     ])
                       Padding(
@@ -757,6 +861,13 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                           onPressed: () {
                             setState(() {
                               _liveSpeakerCtrl.text = preset;
+                              if (preset.startsWith('Mr.')) {
+                                _selectedSpeechLocale = 'en-US';
+                              } else if (preset.startsWith('Herr')) {
+                                _selectedSpeechLocale = 'de-DE';
+                              } else {
+                                _selectedSpeechLocale = 'vi-VN';
+                              }
                             });
                           },
                         ),
@@ -769,7 +880,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 controller: _liveSpeakerCtrl,
                 style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
                 decoration: const InputDecoration(
-                  labelText: 'Người đang phát biểu (Họ tên & Chức vụ)',
+                  labelText: 'Người đang phát biểu (Speaker / Redner)',
                   isDense: true,
                   border: UnderlineInputBorder(),
                 ),
@@ -779,9 +890,22 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 controller: _liveContentCtrl,
                 maxLines: 3,
                 style: const TextStyle(fontSize: 13.5),
+                decoration: InputDecoration(
+                  labelText:
+                      'Nội dung phát biểu gốc [${_localeToShortTag(_selectedSpeechLocale)}] (Nhập tay hoặc bấm Đọc Giọng Nói)',
+                  hintText: 'Nhập hoặc đọc giọng nói Tiếng Việt, Tiếng Anh hoặc Tiếng Đức...',
+                  isDense: true,
+                  border: const UnderlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _liveTranslationCtrl,
+                maxLines: 2,
+                style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
                 decoration: const InputDecoration(
-                  labelText: 'Nội dung phát biểu (Nhập tay hoặc bấm Đọc Giọng Nói ở trên)',
-                  hintText: 'Nhập các ý chính đại biểu vừa trình bày...',
+                  labelText: 'Bản dịch đối sánh Việt / Anh / Đức (Tùy chọn)',
+                  hintText: 'Nhập bản dịch nghĩa sang Tiếng Việt / English / Deutsch nếu cần đối sánh...',
                   isDense: true,
                   border: UnderlineInputBorder(),
                 ),
@@ -792,7 +916,9 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 child: FilledButton.tonalIcon(
                   onPressed: _addLiveTurnToMinutes,
                   icon: const Icon(Icons.playlist_add_check, size: 18),
-                  label: const Text('Đưa Lượt Phát Biểu Này Vào Biên Bản'),
+                  label: Text(
+                    'Đưa Lượt Phát Biểu [${_localeToShortTag(_selectedSpeechLocale)}] Vào Biên Bản',
+                  ),
                 ),
               ),
             ],
@@ -801,20 +927,24 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
 
         const SizedBox(height: 16),
 
-        // DANH SÁCH LƯỢT PHÁT BIỂU ĐÃ GHI NHẬN TRONG CUỘC HỌP HIỆN TẠI (PHẲNG HÓA 100%)
+        // DANH SÁCH LƯỢT PHÁT BIỂU ĐA NGÔN NGỮ ĐÃ GHI NHẬN (PHẲNG HÓA 100%)
         Text(
-          'Diễn biến cuộc họp đã ghi nhận (${_speakerTurns.length} lượt phát biểu)',
+          'Diễn biến cuộc họp đa ngôn ngữ (${_speakerTurns.length} lượt phát biểu)',
           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
         ),
         const SizedBox(height: 8),
         ..._speakerTurns.asMap().entries.map((entry) {
           final idx = entry.key;
           final turn = entry.value;
+          final Color langColor = turn.lang == 'DE'
+              ? Colors.amber.shade700
+              : (turn.lang == 'EN' ? Colors.cyan : cs.primary);
+
           return Container(
             padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
             decoration: BoxDecoration(
               border: Border(
-                left: BorderSide(color: cs.primary, width: 3),
+                left: BorderSide(color: langColor, width: 3.5),
                 bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.45), width: 0.8),
               ),
             ),
@@ -826,7 +956,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        '${idx + 1}. ${turn.speaker}',
+                        '${idx + 1}. [${turn.lang}] ${turn.speaker}',
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.2),
                       ),
                     ),
@@ -854,6 +984,17 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   turn.content,
                   style: const TextStyle(fontSize: 13),
                 ),
+                if (turn.translation.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '↳ Dịch đối sánh: ${turn.translation}',
+                    style: TextStyle(
+                      fontSize: 12.2,
+                      fontStyle: FontStyle.italic,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               ],
             ),
           );
@@ -862,14 +1003,13 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     );
   }
 
-  /// TAB 2: SOẠN THẢO CẤU TRÚC BIÊN BẢN CUỘC HỌP (PHẲNG HÓA 100% - RULE 14)
+  /// TAB 2: SOẠN THẢO CẤU TRÚC BIÊN BẢN CUỘC HỌP ĐA NGÔN NGỮ (PHẲNG HÓA 100% - RULE 14)
   Widget _buildMinutesEditorTab() {
     final cs = Theme.of(context).colorScheme;
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       children: [
-        // 1. THÔNG TIN HÀNH CHÍNH & THÀNH PHẦN THAM DỰ
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -880,6 +1020,39 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const Text(
+                'Chế độ Ngôn ngữ Xuất Biên bản (.DOCX):',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+              ),
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final m in [
+                      {'id': 'VI_EN_DE', 'label': '🇻🇳🇬🇧🇩🇪 Đa ngữ Việt - Anh - Đức'},
+                      {'id': 'VI_EN', 'label': '🇻🇳🇬🇧 Song ngữ Việt - Anh'},
+                      {'id': 'VI_DE', 'label': '🇻🇳🇩🇪 Song ngữ Việt - Đức'},
+                      {'id': 'VI', 'label': '🇻🇳 Tiếng Việt (NĐ 30/2020)'},
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          label: Text(m['label']!, style: const TextStyle(fontSize: 12)),
+                          selected: _docLanguageMode == m['id'],
+                          side: BorderSide.none,
+                          showCheckmark: false,
+                          visualDensity: VisualDensity.compact,
+                          onSelected: (_) => _applyDocLanguageModeTitle(m['id']!),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Divider(height: 1),
+              ),
               const Text(
                 'I. Thông tin Hành chính & Thành phần tham dự',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
@@ -921,10 +1094,19 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               ),
               const SizedBox(height: 8),
               TextField(
+                controller: _meetingTitleCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Tiêu đề Biên bản (Tự động đối sánh theo chế độ ngôn ngữ)',
+                  isDense: true,
+                  border: UnderlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
                 controller: _meetingSubjectCtrl,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  labelText: 'Trích yếu nội dung cuộc họp',
+                  labelText: 'Trích yếu nội dung cuộc họp (Subject / Betreff)',
                   isDense: true,
                   border: UnderlineInputBorder(),
                 ),
@@ -959,7 +1141,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               TextField(
                 controller: _venueCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Địa điểm / Hình thức họp',
+                  labelText: 'Địa điểm / Hình thức họp (Venue / Ort)',
                   isDense: true,
                   border: UnderlineInputBorder(),
                 ),
@@ -974,7 +1156,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     child: TextField(
                       controller: _chairNameCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Họ tên Chủ trì cuộc họp',
+                        labelText: 'Họ tên Chủ trì (Chairperson / Leitung)',
                         isDense: true,
                         border: UnderlineInputBorder(),
                       ),
@@ -1000,7 +1182,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     child: TextField(
                       controller: _secNameCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Họ tên Thư ký cuộc họp',
+                        labelText: 'Họ tên Thư ký (Secretary / Protokoll)',
                         isDense: true,
                         border: UnderlineInputBorder(),
                       ),
@@ -1024,7 +1206,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 controller: _attendeesCtrl,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  labelText: 'Thành viên tham dự (cách nhau bởi dấu chấm phẩy hoặc xuống dòng)',
+                  labelText: 'Thành viên tham dự (cách nhau bởi dấu chấm phẩy)',
                   isDense: true,
                   border: UnderlineInputBorder(),
                 ),
@@ -1037,7 +1219,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
 
               // 2. KẾT LUẬN CỦA CHỦ TRÌ CUỘC HỌP
               const Text(
-                'III. Kết luận của Chủ trì cuộc họp',
+                'III. Kết luận cuộc họp (Conclusions / Beschlüsse)',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
               ),
               const SizedBox(height: 6),
@@ -1077,7 +1259,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     child: TextField(
                       controller: _newConclusionCtrl,
                       decoration: const InputDecoration(
-                        hintText: 'Nhập thêm ý kết luận mới của Chủ trì...',
+                        hintText: 'Nhập thêm ý kết luận (Việt / Anh / Đức)...',
                         isDense: true,
                         border: UnderlineInputBorder(),
                       ),
@@ -1106,7 +1288,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
 
               // 3. BẢNG PHÂN CÔNG NHIỆM VỤ (ACTION ITEMS)
               const Text(
-                'Bảng phân công nhiệm vụ (Action Items)',
+                'Bảng phân công nhiệm vụ (Action Items / Aufgaben)',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
               ),
               const SizedBox(height: 6),
@@ -1157,7 +1339,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               TextField(
                 controller: _newTaskNameCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Nội dung công việc cần giao',
+                  labelText: 'Nội dung công việc (Task / Aufgabe)',
                   isDense: true,
                   border: UnderlineInputBorder(),
                 ),
@@ -1169,7 +1351,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     child: TextField(
                       controller: _newTaskAssigneeCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Đơn vị/Cá nhân chủ trì',
+                        labelText: 'Chủ trì (Assignee)',
                         isDense: true,
                         border: UnderlineInputBorder(),
                       ),
@@ -1180,7 +1362,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     child: TextField(
                       controller: _newTaskCoordCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Đơn vị phối hợp',
+                        labelText: 'Phối hợp (Support)',
                         isDense: true,
                         border: UnderlineInputBorder(),
                       ),
@@ -1240,7 +1422,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     );
   }
 
-  /// TAB 3: XEM TRƯỚC & XUẤT BẢN WORD (.DOCX) CHUẨN NGHỊ ĐỊNH 30/2020/NĐ-CP
+  /// TAB 3: XEM TRƯỚC & XUẤT BẢN WORD (.DOCX) ĐA NGÔN NGỮ CHUẨN NGHỊ ĐỊNH 30/2020/NĐ-CP
   Widget _buildPreviewAndExportTab() {
     final cs = Theme.of(context).colorScheme;
     final previewText = _buildPlainTextPreview();
@@ -1248,7 +1430,30 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       children: [
-        // Thanh công cụ xuất file Word & Chia sẻ
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final m in [
+                {'id': 'VI_EN_DE', 'label': '🇻🇳🇬🇧🇩🇪 Việt-Anh-Đức'},
+                {'id': 'VI_EN', 'label': '🇻🇳🇬🇧 Việt-Anh'},
+                {'id': 'VI_DE', 'label': '🇻🇳🇩🇪 Việt-Đức'},
+                {'id': 'VI', 'label': '🇻🇳 Tiếng Việt'},
+              ])
+                Padding(
+                  padding: const EdgeInsets.only(right: 6, bottom: 8),
+                  child: ChoiceChip(
+                    label: Text(m['label']!, style: const TextStyle(fontSize: 12)),
+                    selected: _docLanguageMode == m['id'],
+                    side: BorderSide.none,
+                    showCheckmark: false,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => _applyDocLanguageModeTitle(m['id']!),
+                  ),
+                ),
+            ],
+          ),
+        ),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -1256,7 +1461,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
             FilledButton.icon(
               onPressed: () => _exportDocxAndOptionallyShare(shareImmediately: false),
               icon: const Icon(Icons.file_download_outlined, size: 18),
-              label: const Text('Xuất File .DOCX (Chuẩn NĐ 30)'),
+              label: Text('Xuất File .DOCX ($_docLanguageMode)'),
             ),
             FilledButton.tonalIcon(
               onPressed: () => _exportDocxAndOptionallyShare(shareImmediately: true),
@@ -1287,7 +1492,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
 
         const SizedBox(height: 12),
 
-        // DUY NHẤT 1 THẺ XEM TRƯỚC BIÊN BẢN HÀNH CHÍNH (SINGLE-LEVEL CARD)
+        // DUY NHẤT 1 THẺ XEM TRƯỚC BIÊN BẢN HÀNH CHÍNH ĐA NGÔN NGỮ (SINGLE-LEVEL CARD)
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1309,10 +1514,10 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Bản xem trước Thể thức Nghị định 30/2020/NĐ-CP (Times New Roman • Khổ A4)',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+                      'Bản xem trước Biên bản Đa ngữ ($_docLanguageMode) • Chuẩn NĐ 30/2020/NĐ-CP',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
                     ),
                   ),
                 ],
@@ -1352,7 +1557,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 14),
             child: Text(
-              'Chưa có tệp .docx nào. Hãy sang tab "Xuất Word" và bấm "Xuất File .DOCX (Chuẩn NĐ 30)".',
+              'Chưa có tệp .docx nào. Hãy sang tab "Xuất Word" và bấm "Xuất File .DOCX".',
               style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
             ),
           )

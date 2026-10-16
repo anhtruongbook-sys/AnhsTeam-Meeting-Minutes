@@ -16,7 +16,6 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
-import java.util.Locale
 
 class MainActivity : FlutterActivity() {
 
@@ -27,6 +26,7 @@ class MainActivity : FlutterActivity() {
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListeningSpeech: Boolean = false
+    private var currentSpeechLocale: String = "vi-VN"
     private var latestPartialSpeech: String = ""
     private var latestFinalSpeech: String = ""
     private var speechErrorText: String = ""
@@ -48,6 +48,7 @@ class MainActivity : FlutterActivity() {
                             "currentRecordingPath" to (recorderEngine.currentFilePath ?: ""),
                             "currentlyPlayingPath" to (currentlyPlayingPath ?: ""),
                             "isListeningSpeech" to isListeningSpeech,
+                            "currentSpeechLocale" to currentSpeechLocale,
                             "latestPartialSpeech" to latestPartialSpeech,
                             "latestFinalSpeech" to latestFinalSpeech,
                             "speechErrorText" to speechErrorText,
@@ -94,12 +95,13 @@ class MainActivity : FlutterActivity() {
                             result.error("BUSY_REC", "Đang thu âm WAV toàn cục. Hãy dùng nút Thêm Lượt Phát Biểu hoặc dừng thu WAV trước khi bật đọc chính tả trực tiếp.", null)
                             return@setMethodCallHandler
                         }
-                        startVietnameseSpeechRecognition()
+                        val locale = call.argument<String>("locale") ?: "vi-VN"
+                        startMultilingualSpeechRecognition(locale)
                         result.success(true)
                     }
 
                     "stopVoiceDictation" -> {
-                        stopVietnameseSpeechRecognition()
+                        stopMultilingualSpeechRecognition()
                         result.success(latestFinalSpeech)
                     }
 
@@ -165,10 +167,17 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    private fun startVietnameseSpeechRecognition() {
+    /**
+     * Nhận diện giọng nói Đa ngôn ngữ:
+     * - "vi-VN" (Tiếng Việt)
+     * - "en-US" (Tiếng Anh - English)
+     * - "de-DE" (Tiếng Đức - Deutsch)
+     */
+    private fun startMultilingualSpeechRecognition(localeCode: String) {
         runOnUiThread {
             try {
-                stopVietnameseSpeechRecognition()
+                stopMultilingualSpeechRecognition()
+                currentSpeechLocale = localeCode
                 latestPartialSpeech = ""
                 speechErrorText = ""
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).apply {
@@ -190,7 +199,7 @@ class MainActivity : FlutterActivity() {
 
                         override fun onError(error: Int) {
                             isListeningSpeech = false
-                            speechErrorText = "Mã trạng thái nhận diện: $error"
+                            speechErrorText = "Mã trạng thái nhận diện ($localeCode): $error"
                         }
 
                         override fun onResults(results: Bundle?) {
@@ -222,8 +231,9 @@ class MainActivity : FlutterActivity() {
 
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "vi-VN")
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "vi-VN")
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, localeCode)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, localeCode)
+                    putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, localeCode)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 }
@@ -236,7 +246,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun stopVietnameseSpeechRecognition() {
+    private fun stopMultilingualSpeechRecognition() {
         runOnUiThread {
             try {
                 speechRecognizer?.stopListening()
@@ -330,7 +340,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         stopAudioPlayback()
-        stopVietnameseSpeechRecognition()
+        stopMultilingualSpeechRecognition()
         super.onDestroy()
     }
 }

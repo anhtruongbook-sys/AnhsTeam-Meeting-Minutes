@@ -62,14 +62,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main')
         with:
-          tag_name: v1.0.0
-          name: "Anh's TEAM - Ghi Biên Bản Cuộc Họp v1.0.0 (Android APK)"
+          tag_name: v1.1.0
+          name: "Anh's TEAM - Ghi Biên Bản Cuộc Họp Đa Ngữ (Việt - Anh - Đức) v1.1.0 (Android APK)"
           body: |
-            ## Ứng Dụng Ghi Âm Phòng Họp & Xuất Biên Bản Cuộc Họp (.DOCX) - Anh's TEAM
+            ## Ứng Dụng Ghi Âm Phòng Họp & Xuất Biên Bản Cuộc Họp Đa Ngôn Ngữ (Việt - Anh - Đức) - Anh's TEAM
             - **Logo & Nhận diện**: Anh's TEAM (Enthusiasm and Ambition).
+            - **Gỡ băng & Nhận diện Giọng nói 3 Ngôn ngữ (`vi-VN`, `en-US`, `de-DE`)**: Chuyển đổi trực tiếp lời phát biểu Tiếng Việt, Tiếng Anh (English) và Tiếng Đức (Deutsch) kèm dấu thời gian `[HH:MM:SS]` và dòng dịch đối sánh.
             - **Thu âm phòng họp DSP**: Thu âm `16kHz 16-bit PCM WAV` kèm bộ khuếch đại khoảng cách xa (`Far-Field Room Gain Boost x1.0 - x6.0`) và kiểm định toàn vẹn `SHA-256`.
-            - **Gỡ băng & Đánh dấu lượt lời**: Nhận diện giọng nói tiếng Việt (`vi-VN` SpeechRecognizer) và gán nhãn người phát biểu kèm dấu thời gian `[HH:MM:SS]`.
-            - **Xuất Biên bản cuộc họp Word (`.docx`) chuẩn Nghị định 30/2020/NĐ-CP**: Khổ A4, lề chuẩn, Quốc hiệu & Tiêu ngữ 2 cột ẩn viền, phông chữ `Times New Roman` màu đen `#000000`, bảng phân công nhiệm vụ nền trắng viền đen `0.5pt`.
+            - **Xuất Biên bản cuộc họp Word (`.docx`) chuẩn Nghị định 30/2020/NĐ-CP & Đa ngữ**: Hỗ trợ 4 chế độ xuất (`VI`, `VI_EN` Song ngữ Việt-Anh, `VI_DE` Song ngữ Việt-Đức, `VI_EN_DE` Đa ngữ Việt-Anh-Đức).
           files: build-output/AnhsTeam_MeetingMinutes.apk
           draft: false
           prerelease: false
