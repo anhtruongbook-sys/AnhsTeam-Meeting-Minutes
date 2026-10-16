@@ -8,3 +8,6 @@ mobile_app/android/local.properties
 __pycache__/
 *.pyc
 ~$*
+
+*.apk
+build-output/

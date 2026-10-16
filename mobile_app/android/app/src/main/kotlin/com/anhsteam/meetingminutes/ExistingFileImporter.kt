@@ -54,8 +54,8 @@ object ExistingFileImporter {
         baseTitle: String,
         recorderEngine: MeetingAudioRecorderEngine
     ): Map<String, Any> {
-        val safeName = displayName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-        val destFile = File(recorderEngine.getRecordingsDir(), "Imported_$safeName")
+        val safeName = displayName.replace(Regex("[^\\p{L}\\p{N}._-]"), "_")
+        val destFile = File(recorderEngine.getRecordingsDir(), safeName)
 
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(destFile).use { output ->

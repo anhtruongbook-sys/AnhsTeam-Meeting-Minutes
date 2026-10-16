@@ -21,7 +21,7 @@ class _AnhsTeamMeetingMinutesAppState extends State<AnhsTeamMeetingMinutesApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: "Anh's TEAM - Biên Bản Họp Đa Ngữ",
+      title: "Anh's TEAM - Biên Bản Họp Tự Động",
       debugShowCheckedModeBanner: false,
       themeMode: _isDark ? ThemeMode.dark : ThemeMode.light,
       theme: ThemeData(
@@ -113,14 +113,17 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
   List<Map<String, dynamic>> _exportedDocx = [];
   Timer? _pollTimer;
 
-  // Ngôn ngữ nhận diện giọng nói trực tiếp: 'vi-VN', 'en-US', 'de-DE'
+  // Ngôn ngữ nhận diện giọng nói: 'vi-VN', 'en-US', 'de-DE'
   String _selectedSpeechLocale = 'vi-VN';
 
   // Chế độ ngôn ngữ xuất Biên bản Word (.docx): 'VI', 'VI_EN', 'VI_DE', 'VI_EN_DE'
-  String _docLanguageMode = 'VI_EN_DE';
+  String _docLanguageMode = 'VI';
 
-  // Thông tin tệp đã nhập từ bộ nhớ máy
+  // Thông báo trạng thái tệp đã nhập
   String _importedFileBanner = '';
+  bool _showManualInputSection = false;
+  int _lastSyncedAutoTurnCount = 0;
+  bool _wasAutoProcessing = false;
 
   // Controllers cho thông tin hành chính của Biên bản cuộc họp
   final TextEditingController _govBodyCtrl = TextEditingController(text: '');
@@ -128,34 +131,32 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
   final TextEditingController _docNumCtrl = TextEditingController(text: 'Số: 01/2026/BB-AT');
   final TextEditingController _locDateCtrl =
       TextEditingController(text: 'Hà Nội, ngày 16 tháng 10 năm 2026');
-  final TextEditingController _meetingTitleCtrl = TextEditingController(
-      text: 'BIÊN BẢN CUỘC HỌP / MEETING MINUTES / SITZUNGSPROTOKOLL');
-  final TextEditingController _meetingSubjectCtrl = TextEditingController(
-      text:
-          'Về việc rà soát tiến độ kỹ thuật dự án quốc tế / Technical Progress Review & Besprechung des Projektfortschritts');
+  final TextEditingController _meetingTitleCtrl =
+      TextEditingController(text: 'BIÊN BẢN CUỘC HỌP');
+  final TextEditingController _meetingSubjectCtrl =
+      TextEditingController(text: 'Về việc tổng hợp nội dung và kết luận cuộc họp');
   final TextEditingController _startTimeCtrl =
-      TextEditingController(text: '08 giờ 30 phút ngày 16/10/2026 (08:30 AM)');
+      TextEditingController(text: '08 giờ 30 phút ngày 16/10/2026');
   final TextEditingController _endTimeCtrl =
-      TextEditingController(text: '11 giờ 00 phút cùng ngày (11:00 AM)');
+      TextEditingController(text: '11 giờ 00 phút cùng ngày');
   final TextEditingController _venueCtrl =
-      TextEditingController(text: 'Phòng họp trung tâm & Trực tuyến (Hybrid Meeting / Online-Konferenz)');
+      TextEditingController(text: 'Phòng họp trung tâm & Trực tuyến');
   final TextEditingController _chairNameCtrl = TextEditingController(text: 'Ông Trương Đức Anh');
   final TextEditingController _chairTitleCtrl =
-      TextEditingController(text: "Trưởng nhóm Anh's TEAM / Team Leader / Projektleiter");
-  final TextEditingController _secNameCtrl = TextEditingController(text: 'Thư ký chuyên trách');
-  final TextEditingController _secTitleCtrl =
-      TextEditingController(text: 'Thư ký cuộc họp / Secretary / Protokollführung');
-  final TextEditingController _attendeesCtrl = TextEditingController(
-      text:
-          'Mr. John Miller (Technical Advisor); Herr Klaus Weber (Chefingenieur); Các thành viên chuyên môn của Anh\'s TEAM');
+      TextEditingController(text: "Trưởng nhóm Anh's TEAM - Chủ trì");
+  final TextEditingController _secNameCtrl =
+      TextEditingController(text: "Hệ thống Tự động Anh's TEAM");
+  final TextEditingController _secTitleCtrl = TextEditingController(text: 'Thư ký cuộc họp');
+  final TextEditingController _attendeesCtrl =
+      TextEditingController(text: "Các thành viên tham dự cuộc họp của Anh's TEAM");
 
-  // Controllers cho việc thêm nhanh lượt phát biểu tại Tab 1
+  // Controllers cho việc thêm thủ công (tùy chọn)
   final TextEditingController _liveSpeakerCtrl =
       TextEditingController(text: 'Ông Trương Đức Anh (Chủ trì)');
   final TextEditingController _liveContentCtrl = TextEditingController();
   final TextEditingController _liveTranslationCtrl = TextEditingController();
 
-  // Controllers cho việc thêm Kết luận và Nhiệm vụ tại Tab 2
+  // Controllers cho việc chỉnh sửa Kết luận và Nhiệm vụ tại Tab 2
   final TextEditingController _newConclusionCtrl = TextEditingController();
   final TextEditingController _newTaskNameCtrl = TextEditingController();
   final TextEditingController _newTaskAssigneeCtrl = TextEditingController();
@@ -165,55 +166,10 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
   String _lastSyncedSpeech = '';
   String _lastExportedDocxPath = '';
 
-  final List<SpeakerTurnItem> _speakerTurns = [
-    SpeakerTurnItem(
-      speaker: 'Ông Trương Đức Anh (Chủ trì / Chairperson)',
-      lang: 'VI',
-      timestamp: '00:00:15',
-      content:
-          'Tuyên bố lý do cuộc họp, quán triệt mục tiêu rà soát tiến độ thực hiện các hạng mục kỹ thuật giữa ba đầu cầu Việt Nam, Anh và Cộng hòa Liên bang Đức.',
-      translation:
-          'Declared the meeting objective to review technical milestones across the Vietnam, UK/US, and German engineering teams.',
-    ),
-    SpeakerTurnItem(
-      speaker: 'Mr. John Miller (Technical Advisor)',
-      lang: 'EN',
-      timestamp: '00:04:30',
-      content:
-          'We have completed the phase-one system architecture verification and confirmed that all interface specifications meet the international standards.',
-      translation:
-          'Chúng tôi đã hoàn thành kiểm tra kiến trúc hệ thống giai đoạn 1 và xác nhận toàn bộ thông số giao diện đáp ứng tiêu chuẩn quốc tế.',
-    ),
-    SpeakerTurnItem(
-      speaker: 'Herr Klaus Weber (Chefingenieur)',
-      lang: 'DE',
-      timestamp: '00:09:15',
-      content:
-          'Die technische Dokumentation und die Sicherheitsprüfungen wurden planmäßig abgeschlossen. Wir empfehlen die Freigabe für die nächste Projektphase.',
-      translation:
-          'Hồ sơ kỹ thuật và các kiểm định an toàn đã hoàn tất đúng kế hoạch. Chúng tôi kiến nghị phê duyệt chuyển sang giai đoạn tiếp theo của dự án.',
-    ),
-  ];
-
-  final List<String> _conclusions = [
-    'Thống nhất thông qua báo cáo kỹ thuật của các chuyên gia quốc tế và phê duyệt lộ trình triển khai giai đoạn tiếp theo / Approved the technical report and next-phase schedule / Dem technischen Bericht und dem Zeitplan wurde zugestimmt.',
-    'Yêu cầu các bộ phận hoàn thành bàn giao hồ sơ đa ngôn ngữ đúng thời hạn trong bảng phân công nhiệm vụ.',
-  ];
-
-  final List<ActionTaskItem> _actionItems = [
-    ActionTaskItem(
-      task: 'Hoàn thiện hồ sơ kỹ thuật song ngữ / Finalize technical dossier / Technische Unterlagen fertigstellen',
-      assignee: 'Bộ phận Kỹ thuật & Herr Klaus Weber',
-      coordinator: 'Mr. John Miller',
-      deadline: '22/10/2026',
-    ),
-    ActionTaskItem(
-      task: 'Ban hành Biên bản cuộc họp đa ngôn ngữ (Việt - Anh - Đức) cho các bên liên quan',
-      assignee: 'Thư ký cuộc họp',
-      coordinator: "Văn phòng Anh's TEAM",
-      deadline: '17/10/2026',
-    ),
-  ];
+  // Khởi tạo danh sách trống (Không để dữ liệu mẫu giả định - Tuân thủ Rule 12)
+  final List<SpeakerTurnItem> _speakerTurns = [];
+  final List<String> _conclusions = [];
+  final List<ActionTaskItem> _actionItems = [];
 
   @override
   void initState() {
@@ -260,11 +216,67 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
       final res = await _channel.invokeMethod('getSystemStatus');
       if (res is Map && mounted) {
         final map = Map<String, dynamic>.from(res);
+
+        // Đồng bộ kết quả đọc giọng nói trực tiếp (nếu có)
         final finalSpeech = (map['latestFinalSpeech'] ?? '').toString().trim();
         if (finalSpeech.isNotEmpty && finalSpeech != _lastSyncedSpeech) {
           _lastSyncedSpeech = finalSpeech;
           _liveContentCtrl.text = finalSpeech;
         }
+
+        // Đồng bộ tự động các lượt phát biểu, kết luận & nhiệm vụ từ AutoAudioMinutesProcessor
+        final bool isAuto = map['isAutoProcessing'] == true;
+        final List<dynamic> autoTurnsRaw = (map['autoTranscribedTurns'] as List?) ?? [];
+        final List<dynamic> autoConcRaw = (map['autoExtractedConclusions'] as List?) ?? [];
+        final List<dynamic> autoActRaw = (map['autoExtractedActions'] as List?) ?? [];
+        final String autoDocx = (map['autoGeneratedDocxPath'] ?? '').toString();
+
+        if (autoTurnsRaw.length != _lastSyncedAutoTurnCount || (_wasAutoProcessing && !isAuto)) {
+          _lastSyncedAutoTurnCount = autoTurnsRaw.length;
+          _speakerTurns
+            ..clear()
+            ..addAll(
+              autoTurnsRaw.whereType<Map>().map((m) {
+                final tm = Map<String, dynamic>.from(m);
+                return SpeakerTurnItem(
+                  speaker: (tm['speaker'] ?? 'Đại biểu').toString(),
+                  lang: (tm['lang'] ?? 'VI').toString(),
+                  timestamp: (tm['timestamp'] ?? '00:00:00').toString(),
+                  content: (tm['content'] ?? '').toString(),
+                  translation: (tm['translation'] ?? '').toString(),
+                );
+              }),
+            );
+        }
+
+        if (autoConcRaw.isNotEmpty && (_wasAutoProcessing || _conclusions.isEmpty)) {
+          _conclusions
+            ..clear()
+            ..addAll(autoConcRaw.map((e) => e.toString()));
+        }
+
+        if (autoActRaw.isNotEmpty && (_wasAutoProcessing || _actionItems.isEmpty)) {
+          _actionItems
+            ..clear()
+            ..addAll(
+              autoActRaw.whereType<Map>().map((m) {
+                final am = Map<String, dynamic>.from(m);
+                return ActionTaskItem(
+                  task: (am['task'] ?? '').toString(),
+                  assignee: (am['assignee'] ?? 'Bộ phận chuyên môn').toString(),
+                  coordinator: (am['coordinator'] ?? 'Các đơn vị').toString(),
+                  deadline: (am['deadline'] ?? 'Theo kế hoạch').toString(),
+                );
+              }),
+            );
+        }
+
+        if (autoDocx.isNotEmpty && autoDocx != _lastExportedDocxPath) {
+          _lastExportedDocxPath = autoDocx;
+          _refreshFiles();
+        }
+
+        _wasAutoProcessing = isAuto;
         setState(() {
           _status = map;
         });
@@ -302,10 +314,13 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     return 'VI';
   }
 
-  /// NHẬP FILE CÓ SẴN TRONG MÁY (AUDIO .WAV/.M4A/.MP3/.AAC HOẶC VĂN BẢN .TXT/.SRT/.JSON/.DOCX)
+  /// NHẬP FILE CÓ SẴN TRONG MÁY -> TỰ ĐỘNG GỠ BĂNG & TỰ SINH BIÊN BẢN (KHÔNG CẦN NHẬP TAY)
   Future<void> _pickAndImportExistingFile() async {
     try {
-      final res = await _channel.invokeMethod('pickAndImportFile');
+      final res = await _channel.invokeMethod('pickAndImportFile', {
+        'locale': _selectedSpeechLocale,
+        'docLanguageMode': _docLanguageMode,
+      });
       if (res == null || res is! Map) return;
 
       final info = Map<String, dynamic>.from(res);
@@ -314,40 +329,21 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
       final suggestedSubject = (info['suggestedSubject'] ?? '').toString();
 
       if (category == 'AUDIO') {
-        final path = (info['path'] ?? '').toString();
         final durSec = (info['durationSec'] as num?)?.toInt() ?? 0;
         final sha = (info['sha256Short'] ?? '').toString();
 
-        await _refreshFiles();
-        if (path.isNotEmpty) {
-          await _channel.invokeMethod('playRecording', {'path': path});
-        }
-        await _refreshStatusOnly();
-
-        if (mounted) {
-          setState(() {
-            if (suggestedSubject.isNotEmpty) {
-              _meetingSubjectCtrl.text = suggestedSubject;
-            }
-            _importedFileBanner =
-                'Đã nạp tệp âm thanh: $name (Thời lượng: ${_formatDuration(durSec)} • SHA256: $sha). Đang phát âm thanh để gỡ băng và lập biên bản.';
-            _speakerTurns.add(
-              SpeakerTurnItem(
-                speaker: 'Nguồn tệp âm thanh nhập vào ($name)',
-                lang: _localeToShortTag(_selectedSpeechLocale),
-                timestamp: '00:00:00 - ${_formatDuration(durSec)}',
-                content:
-                    'Tệp ghi âm gốc: $name (Thời lượng: ${_formatDuration(durSec)}, Mã kiểm định SHA-256: $sha).',
-                translation: '',
-              ),
-            );
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Đã nhập tệp âm thanh "$name" và bắt đầu phát để trích xuất biên bản.'),
-            ),
-          );
-        }
+        setState(() {
+          _speakerTurns.clear();
+          _conclusions.clear();
+          _actionItems.clear();
+          _lastSyncedAutoTurnCount = 0;
+          if (suggestedSubject.isNotEmpty) {
+            _meetingSubjectCtrl.text = suggestedSubject;
+          }
+          _importedFileBanner =
+              'Đang xử lý tự động tệp "$name" (${_formatDuration(durSec)} • SHA256: $sha) -> Tự động gỡ băng từng đoạn và sinh Biên bản Word (.docx)...';
+        });
+        await _refreshAll();
       } else if (category == 'DOCUMENT') {
         final rawTurns = (info['turns'] as List?) ?? [];
         final rawConclusions = (info['conclusions'] as List?) ?? [];
@@ -392,32 +388,20 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
             if (suggestedSubject.isNotEmpty) {
               _meetingSubjectCtrl.text = suggestedSubject;
             }
-            if (importedTurns.isNotEmpty) {
-              _speakerTurns
-                ..clear()
-                ..addAll(importedTurns);
-            }
-            if (importedConclusions.isNotEmpty) {
-              _conclusions
-                ..clear()
-                ..addAll(importedConclusions);
-            }
-            if (importedActions.isNotEmpty) {
-              _actionItems
-                ..clear()
-                ..addAll(importedActions);
-            }
+            _speakerTurns
+              ..clear()
+              ..addAll(importedTurns);
+            _conclusions
+              ..clear()
+              ..addAll(importedConclusions);
+            _actionItems
+              ..clear()
+              ..addAll(importedActions);
             _importedFileBanner =
-                'Đã nhập tệp "$name": Trích xuất tự động ${importedTurns.length} lượt phát biểu và ${importedConclusions.length} kết luận vào Biên bản.';
+                'Đã tự động trích xuất ${importedTurns.length} lượt phát biểu từ "$name" và xuất sang Biên bản Word (.docx).';
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Đã nạp ${importedTurns.length} lượt phát biểu từ "$name"! Bạn có thể sang tab "Xuất Word" để xuất .DOCX ngay.',
-              ),
-              duration: const Duration(seconds: 4),
-            ),
-          );
+          // Tự động xuất luôn file .DOCX cho người dùng
+          await _exportDocxAndOptionallyShare(shareImmediately: false);
         }
       }
     } on PlatformException catch (e) {
@@ -429,47 +413,47 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     }
   }
 
-  /// NẠP NHANH 1 FILE GHI ÂM ĐÃ QUÉT TRONG MÁY ĐỂ PHÁT & TẠO BIÊN BẢN
-  Future<void> _loadExistingAudioItemIntoMinutes(Map<String, dynamic> rec) async {
+  /// CHẠY TỰ ĐỘNG GỠ BĂNG & TẠO BIÊN BẢN CHO 1 FILE GHI ÂM TRONG MÁY
+  Future<void> _autoGenerateMinutesFromAudioItem(Map<String, dynamic> rec) async {
     final path = (rec['path'] ?? '').toString();
     final name = (rec['name'] ?? '').toString();
     final durSec = (rec['durationSec'] as num?)?.toInt() ?? 0;
-    final sha = (rec['sha256Short'] ?? '').toString();
 
-    if (path.isNotEmpty) {
-      await _channel.invokeMethod('playRecording', {'path': path});
-      await _refreshStatusOnly();
-    }
-    if (mounted) {
-      setState(() {
-        _meetingSubjectCtrl.text = 'Biên bản cuộc họp (Trích xuất từ tệp ghi âm: $name)';
-        _importedFileBanner =
-            'Đang mở tệp ghi âm có sẵn: $name (${_formatDuration(durSec)} • SHA256: $sha).';
-        _speakerTurns.add(
-          SpeakerTurnItem(
-            speaker: 'Tệp ghi âm nguồn ($name)',
-            lang: _localeToShortTag(_selectedSpeechLocale),
-            timestamp: '00:00:00 - ${_formatDuration(durSec)}',
-            content:
-                'Bản ghi âm cuộc họp gốc: $name (Thời lượng: ${_formatDuration(durSec)}, SHA-256: $sha).',
-            translation: '',
-          ),
-        );
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Đã nạp "$name" vào Biên bản và bắt đầu phát âm thanh.')),
-      );
-    }
+    if (path.isEmpty) return;
+    setState(() {
+      _speakerTurns.clear();
+      _conclusions.clear();
+      _actionItems.clear();
+      _lastSyncedAutoTurnCount = 0;
+      _meetingSubjectCtrl.text = 'Biên bản cuộc họp (Trích xuất tự động từ tệp: $name)';
+      _importedFileBanner =
+          'Đang tự động gỡ băng tệp "$name" (${_formatDuration(durSec)}) và tự sinh Biên bản cuộc họp...';
+    });
+
+    await _channel.invokeMethod('startAutoProcessAudioPath', {
+      'path': path,
+      'locale': _selectedSpeechLocale,
+      'docLanguageMode': _docLanguageMode,
+    });
+    await _refreshStatusOnly();
   }
 
   Future<void> _toggleMeetingRecording() async {
     final isRec = _status['isRecording'] == true;
     if (isRec) {
+      setState(() {
+        _speakerTurns.clear();
+        _conclusions.clear();
+        _actionItems.clear();
+        _lastSyncedAutoTurnCount = 0;
+      });
       await _channel.invokeMethod('stopMeetingRecording');
       await _refreshAll();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã dừng thu âm và lưu tệp WAV 16kHz kèm mã SHA-256.')),
+          const SnackBar(
+            content: Text('Đã dừng thu âm -> Hệ thống đang tự động gỡ băng và sinh Biên bản Word (.docx)!'),
+          ),
         );
       }
     } else {
@@ -549,13 +533,6 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
       _lastSyncedSpeech = '';
     });
     _channel.invokeMethod('clearSpeechBuffer');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Đã thêm lượt phát biểu [${_localeToShortTag(_selectedSpeechLocale)}] (Mốc: $ts) vào Biên bản.',
-        ),
-      ),
-    );
   }
 
   void _applyDocLanguageModeTitle(String mode) {
@@ -608,45 +585,41 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     sb.writeln(_meetingTitleCtrl.text.trim().toUpperCase());
     sb.writeln(_meetingSubjectCtrl.text.trim());
     sb.writeln('');
-    if (_docLanguageMode == 'VI_EN_DE') {
-      sb.writeln('I. THỜI GIAN, ĐỊA ĐIỂM & THÀNH PHẦN / TIME, VENUE & PARTICIPANTS / ZEIT, ORT & TEILNEHMER');
-    } else if (_docLanguageMode == 'VI_EN') {
-      sb.writeln('I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ / TIME, VENUE AND PARTICIPANTS');
-    } else if (_docLanguageMode == 'VI_DE') {
-      sb.writeln('I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ / ZEIT, ORT UND TEILNEHMER');
-    } else {
-      sb.writeln('I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ');
-    }
-    sb.writeln('1. Thời gian bắt đầu (Start / Beginn): ${_startTimeCtrl.text.trim()}.');
-    sb.writeln('2. Địa điểm / Hình thức (Venue / Ort): ${_venueCtrl.text.trim()}.');
-    sb.writeln('3. Thành phần tham dự (Participants / Teilnehmer):');
-    sb.writeln('- Chủ trì (Chair / Leitung): ${_chairNameCtrl.text.trim()} (${_chairTitleCtrl.text.trim()}).');
-    sb.writeln('- Thư ký (Secretary / Protokoll): ${_secNameCtrl.text.trim()} (${_secTitleCtrl.text.trim()}).');
+    sb.writeln('I. THỜI GIAN, ĐỊA ĐIỂM VÀ THÀNH PHẦN THAM DỰ');
+    sb.writeln('1. Thời gian bắt đầu: ${_startTimeCtrl.text.trim()}.');
+    sb.writeln('2. Địa điểm / Hình thức: ${_venueCtrl.text.trim()}.');
+    sb.writeln('3. Thành phần tham dự:');
+    sb.writeln('- Chủ trì: ${_chairNameCtrl.text.trim()} (${_chairTitleCtrl.text.trim()}).');
+    sb.writeln('- Thư ký: ${_secNameCtrl.text.trim()} (${_secTitleCtrl.text.trim()}).');
     if (_attendeesCtrl.text.trim().isNotEmpty) {
-      sb.writeln('- Thành viên (Attendees / Teilnehmer): ${_attendeesCtrl.text.trim()}.');
+      sb.writeln('- Thành viên: ${_attendeesCtrl.text.trim()}.');
     }
     sb.writeln('');
-    sb.writeln('II. NỘI DUNG CUỘC HỌP / MEETING PROCEEDINGS / BESPRECHUNGSINHALT');
-    for (int i = 0; i < _speakerTurns.length; i++) {
-      final t = _speakerTurns[i];
-      sb.writeln('${i + 1}. [${t.lang}] Phát biểu của ${t.speaker} (Mốc: ${t.timestamp}):');
-      for (final line in t.content.split('\n')) {
-        if (line.trim().isNotEmpty) {
-          sb.writeln('- ${line.trim()}');
+    sb.writeln('II. NỘI DUNG DIỄN BIẾN CUỘC HỌP');
+    if (_speakerTurns.isEmpty) {
+      sb.writeln('- (Chưa có nội dung gỡ băng. Hãy bấm "Nhập File Có Sẵn" để hệ thống tự động gỡ băng và sinh biên bản).');
+    } else {
+      for (int i = 0; i < _speakerTurns.length; i++) {
+        final t = _speakerTurns[i];
+        sb.writeln('${i + 1}. [${t.lang}] Phát biểu của ${t.speaker} (Mốc: ${t.timestamp}):');
+        for (final line in t.content.split('\n')) {
+          if (line.trim().isNotEmpty) {
+            sb.writeln('- ${line.trim()}');
+          }
+        }
+        if (t.translation.trim().isNotEmpty) {
+          sb.writeln('  -> [Dịch đối sánh]: ${t.translation.trim()}');
         }
       }
-      if (t.translation.trim().isNotEmpty) {
-        sb.writeln('  -> [Đối sánh ngôn ngữ / Translation / Übersetzung]: ${t.translation.trim()}');
-      }
     }
     sb.writeln('');
-    sb.writeln('III. KẾT LUẬN & PHÂN CÔNG NHIỆM VỤ / CONCLUSIONS & ACTIONS / BESCHLÜSSE & AUFGABEN');
+    sb.writeln('III. KẾT LUẬN VÀ PHÂN CÔNG NHIỆM VỤ');
     for (final c in _conclusions) {
       sb.writeln('- $c');
     }
     if (_actionItems.isNotEmpty) {
       sb.writeln('');
-      sb.writeln('Bảng phân công nhiệm vụ / Action Items / Aufgabenverteilung:');
+      sb.writeln('Bảng phân công nhiệm vụ:');
       for (int i = 0; i < _actionItems.length; i++) {
         final a = _actionItems[i];
         sb.writeln(
@@ -708,6 +681,11 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     final int playPosSec = (_status['playbackPositionSec'] as num?)?.toInt() ?? 0;
     final int playDurSec = (_status['playbackDurationSec'] as num?)?.toInt() ?? 0;
 
+    final bool isAutoProcessing = _status['isAutoProcessing'] == true;
+    final int autoProgressPct = (_status['autoProgressPercent'] as num?)?.toInt() ?? 0;
+    final String autoStatusMsg = (_status['autoStatusMessage'] ?? '').toString();
+    final String autoPartialTxt = (_status['autoPartialText'] ?? '').toString();
+
     return DefaultTabController(
       length: 4,
       child: Scaffold(
@@ -731,12 +709,12 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      "Anh's TEAM • Biên Bản Đa Ngữ",
+                      "Anh's TEAM • Biên Bản Tự Động",
                       style: TextStyle(fontSize: 15.8, fontWeight: FontWeight.w800),
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      'Thu âm • Nhập File • Việt/Anh/Đức • Xuất NĐ 30',
+                      'Tự động Gỡ băng File Ghi âm -> Sinh Word NĐ 30',
                       style: TextStyle(
                         fontSize: 11.2,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -750,7 +728,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           ),
           actions: [
             IconButton(
-              tooltip: 'Nhập file có sẵn trong máy',
+              tooltip: 'Nhập file ghi âm để tự sinh biên bản',
               icon: const Icon(Icons.file_upload_outlined),
               onPressed: _pickAndImportExistingFile,
             ),
@@ -771,7 +749,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
             labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
             unselectedLabelStyle: TextStyle(fontSize: 11.5),
             tabs: [
-              Tab(icon: Icon(Icons.mic_external_on, size: 19), text: 'Thu & Nhập'),
+              Tab(icon: Icon(Icons.auto_awesome, size: 19), text: 'Tự Động'),
               Tab(icon: Icon(Icons.edit_note, size: 19), text: 'Soạn Họp'),
               Tab(icon: Icon(Icons.description_outlined, size: 19), text: 'Xuất Word'),
               Tab(icon: Icon(Icons.folder_copy_outlined, size: 19), text: 'File Máy'),
@@ -791,6 +769,10 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               playingPath: playingPath,
               playPosSec: playPosSec,
               playDurSec: playDurSec,
+              isAutoProcessing: isAutoProcessing,
+              autoProgressPct: autoProgressPct,
+              autoStatusMsg: autoStatusMsg,
+              autoPartialTxt: autoPartialTxt,
             ),
             _buildMinutesEditorTab(),
             _buildPreviewAndExportTab(),
@@ -801,7 +783,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     );
   }
 
-  /// TAB 1: THU ÂM PHÒNG HỌP, NHẬP FILE CÓ SẴN TRONG MÁY & GỠ BĂNG ĐA NGÔN NGỮ (RULE 14)
+  /// TAB 1: TỰ ĐỘNG XỬ LÝ FILE GHI ÂM CÓ SẴN THÀNH BIÊN BẢN CUỘC HỌP (RULE 14)
   Widget _buildRecordAndTranscribeTab({
     required bool micGranted,
     required bool isRecording,
@@ -813,6 +795,10 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     required String playingPath,
     required int playPosSec,
     required int playDurSec,
+    required bool isAutoProcessing,
+    required int autoProgressPct,
+    required String autoStatusMsg,
+    required String autoPartialTxt,
   }) {
     final cs = Theme.of(context).colorScheme;
 
@@ -824,7 +810,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
             decoration: BoxDecoration(
-              color: Colors.amber.withOpacity(0.12),
+              color: Colors.amber.withOpacity(0.15),
               border: Border(
                 left: BorderSide(color: Colors.amber.shade700, width: 3.5),
               ),
@@ -833,51 +819,106 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               children: [
                 const Expanded(
                   child: Text(
-                    'Cần cấp quyền Microphone & Bộ nhớ để thu âm, quét file ghi âm trong máy và nhận diện giọng nói.',
-                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                    'BẮT BUỘC: Bấm "Cấp quyền" để hệ thống Nhận diện giọng nói (Speech Engine) của Android được phép gỡ băng tự động tệp âm thanh.',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton.tonalIcon(
+                FilledButton.icon(
                   onPressed: () async {
                     await _channel.invokeMethod('requestPermissions');
                     await _refreshAll();
                   },
-                  icon: const Icon(Icons.mic, size: 16),
+                  icon: const Icon(Icons.verified_user, size: 16),
                   label: const Text('Cấp quyền'),
                 ),
               ],
             ),
           ),
 
-        if (_importedFileBanner.isNotEmpty)
+        // HIỂN THỊ TIẾN TRÌNH TỰ ĐỘNG GỠ BĂNG & TỰ SINH BIÊN BẢN
+        if (isAutoProcessing || autoStatusMsg.isNotEmpty)
           Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+            margin: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
             decoration: BoxDecoration(
-              color: cs.primaryContainer.withOpacity(0.22),
+              color: isAutoProcessing
+                  ? cs.primaryContainer.withOpacity(0.28)
+                  : Colors.green.withOpacity(0.14),
               border: Border(
-                left: BorderSide(color: cs.primary, width: 3.5),
+                left: BorderSide(
+                  color: isAutoProcessing ? cs.primary : Colors.green,
+                  width: 4,
+                ),
               ),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    _importedFileBanner,
-                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        isAutoProcessing
+                            ? 'ĐANG TỰ ĐỘNG GỠ BĂNG & SINH BIÊN BẢN ($autoProgressPct%)'
+                            : 'HOÀN TẤT TỰ ĐỘNG SINH BIÊN BẢN CUỘC HỌP',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13.2,
+                          color: isAutoProcessing ? cs.primary : Colors.green,
+                        ),
+                      ),
+                    ),
+                    if (isAutoProcessing)
+                      TextButton.icon(
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                        onPressed: () => _channel.invokeMethod('stopAutoProcessEarly'),
+                        icon: const Icon(Icons.done_all, size: 17),
+                        label: const Text('Xuất Ngay'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                LinearProgressIndicator(
+                  value: (autoProgressPct / 100.0).clamp(0.02, 1.0),
+                  minHeight: 6,
+                  color: isAutoProcessing ? cs.primary : Colors.green,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  autoStatusMsg,
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                ),
+                if (autoPartialTxt.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Đang nghe câu: "$autoPartialTxt..."',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.amber,
+                    ),
                   ),
-                ),
-                IconButton(
-                  visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.close, size: 17),
-                  onPressed: () => setState(() => _importedFileBanner = ''),
-                ),
+                ],
+                if (!isAutoProcessing && _lastExportedDocxPath.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      FilledButton.icon(
+                        onPressed: () => _exportDocxAndOptionallyShare(shareImmediately: true),
+                        icon: const Icon(Icons.share, size: 17),
+                        label: const Text('Gửi File Word (.DOCX) Vừa Tự Sinh'),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
 
-        // DUY NHẤT 1 THẺ ĐƠN CẤP (SINGLE-LEVEL CARD) CHO BỘ THU ÂM, NHẬP FILE & GỠ BĂNG ĐA NGÔN NGỮ
+        // DUY NHẤT 1 THẺ ĐƠN CẤP (SINGLE-LEVEL CARD) CHO BỘ TỰ ĐỘNG HÓA 1-CHẠM
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -891,189 +932,11 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Icon(
-                          isRecording ? Icons.fiber_manual_record : Icons.podcasts,
-                          color: isRecording ? Colors.redAccent : cs.primary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            isRecording
-                                ? 'ĐANG THU ÂM: ${_formatDuration(elapsedSec)}'
-                                : 'Thu âm Phòng họp & Nhập File Có Sẵn',
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.8),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    'DSP x${roomGain.toStringAsFixed(1)}',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
-                      color: cs.primary,
-                    ),
-                  ),
-                ],
+              const Text(
+                '1. Chọn Ngôn ngữ chính của File Ghi âm (VI / EN / DE):',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
               ),
-              if (isRecording) ...[
-                const SizedBox(height: 10),
-                LinearProgressIndicator(
-                  value: (peakAmp / 32767.0).clamp(0.03, 1.0),
-                  minHeight: 6,
-                  color: Colors.redAccent,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Cường độ âm thanh phòng họp: $peakAmp / 32767',
-                  style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
-                ),
-              ],
               const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Độ nhạy thu xa (Far-Field Gain): x${roomGain.toStringAsFixed(1)}',
-                      style: const TextStyle(fontSize: 12.3, fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 145,
-                    child: Slider(
-                      value: roomGain.clamp(1.0, 6.0),
-                      min: 1.0,
-                      max: 6.0,
-                      divisions: 10,
-                      label: 'x${roomGain.toStringAsFixed(1)}',
-                      onChanged: (val) async {
-                        await _channel.invokeMethod('updateRoomGain', {'roomGainBoost': val});
-                        await _refreshStatusOnly();
-                      },
-                    ),
-                  ),
-                ],
-              ),
-
-              // 2 NÚT HÀNH ĐỘNG CHÍNH: THU ÂM MỚI HOẶC NHẬP FILE CÓ SẴN TRONG MÁY
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: isRecording ? Colors.red : null,
-                    ),
-                    onPressed: _toggleMeetingRecording,
-                    icon: Icon(
-                      isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
-                      size: 18,
-                    ),
-                    label: Text(
-                      isRecording ? 'Dừng & Lưu WAV' : 'Thu Âm Cuộc Họp Mới',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: _pickAndImportExistingFile,
-                    icon: const Icon(Icons.folder_open, size: 18),
-                    label: const Text(
-                      'Nhập File Có Sẵn (Audio / TXT / SRT / DOCX)',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ],
-              ),
-
-              // TRÌNH ĐIỀU KHIỂN PHÁT & TUA NHANH KHI ĐANG MỞ FILE ÂM THANH ĐÃ NHẬP
-              if (playingPath.isNotEmpty) ...[
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 10),
-                  child: Divider(height: 1),
-                ),
-                Row(
-                  children: [
-                    const Icon(Icons.headphones, size: 18, color: Colors.green),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Đang phát: ${playingPath.split(RegExp(r'[/\\]')).last} (${_formatDuration(playPosSec)} / ${_formatDuration(playDurSec)})',
-                        style: const TextStyle(
-                          fontSize: 12.2,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.green,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      tooltip: 'Lùi 10 giây',
-                      icon: const Icon(Icons.replay_10, size: 20),
-                      onPressed: () => _channel.invokeMethod('seekPlayback', {'deltaSeconds': -10}),
-                    ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      tooltip: 'Tới 10 giây',
-                      icon: const Icon(Icons.forward_10, size: 20),
-                      onPressed: () => _channel.invokeMethod('seekPlayback', {'deltaSeconds': 10}),
-                    ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      tooltip: 'Dừng phát',
-                      icon: const Icon(Icons.stop_circle_outlined, size: 20, color: Colors.redAccent),
-                      onPressed: () async {
-                        await _channel.invokeMethod('stopPlayback');
-                        await _refreshStatusOnly();
-                      },
-                    ),
-                  ],
-                ),
-              ],
-
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Divider(height: 1),
-              ),
-
-              // KHU VỰC CHỌN NGÔN NGỮ NHẬN DIỆN GIỌNG NÓI (TIẾNG VIỆT / TIẾNG ANH / TIẾNG ĐỨC)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Ngôn ngữ phát biểu (VI / EN / DE):',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.2),
-                  ),
-                  TextButton.icon(
-                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                    onPressed: _toggleVoiceDictation,
-                    icon: Icon(
-                      isListeningSpeech ? Icons.mic_off : Icons.record_voice_over,
-                      size: 17,
-                      color: isListeningSpeech ? Colors.redAccent : cs.primary,
-                    ),
-                    label: Text(
-                      isListeningSpeech
-                          ? 'Đang nghe ${_localeToShortTag(_selectedSpeechLocale)} (Dừng)'
-                          : 'Đọc Giọng Nói (${_localeToShortTag(_selectedSpeechLocale)})',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                        color: isListeningSpeech ? Colors.redAccent : cs.primary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -1081,12 +944,12 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     for (final langOpt in [
                       {'locale': 'vi-VN', 'label': '🇻🇳 Tiếng Việt (vi-VN)'},
                       {'locale': 'en-US', 'label': '🇬🇧 English (en-US)'},
-                      {'locale': 'de-DE', 'label': '🇩🇪 Tiếng Đức - Deutsch (de-DE)'},
+                      {'locale': 'de-DE', 'label': '🇩🇪 Tiếng Đức (de-DE)'},
                     ])
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: ChoiceChip(
-                          label: Text(langOpt['label']!, style: const TextStyle(fontSize: 12)),
+                          label: Text(langOpt['label']!, style: const TextStyle(fontSize: 12.2)),
                           selected: _selectedSpeechLocale == langOpt['locale'],
                           side: BorderSide.none,
                           showCheckmark: false,
@@ -1101,179 +964,253 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   ],
                 ),
               ),
-              if (partialSpeech.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6, bottom: 4),
-                  child: Text(
-                    'Đang nhận diện [${_localeToShortTag(_selectedSpeechLocale)}]: "$partialSpeech..."',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontStyle: FontStyle.italic,
-                      color: Colors.amber,
-                    ),
+
+              const SizedBox(height: 12),
+              const Text(
+                '2. Bấm Chọn File Ghi Âm Có Sẵn -> Tự Động Sinh Biên Bản (.DOCX):',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+              ),
+              const SizedBox(height: 8),
+
+              // NÚT CHÍNH: NHẬP FILE GHI ÂM -> TỰ ĐỘNG GỠ BĂNG & SINH BIÊN BẢN 100%
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                  ),
+                  onPressed: isAutoProcessing ? null : _pickAndImportExistingFile,
+                  icon: const Icon(Icons.auto_fix_high, size: 20),
+                  label: const Text(
+                    'Nhập File Ghi Âm (.M4A/.WAV/.MP3) -> Tự Sinh Biên Bản',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
                   ),
                 ),
+              ),
 
-              const SizedBox(height: 6),
-              // Chọn nhanh đại biểu phát biểu bằng Chip phẳng (side: BorderSide.none)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (final preset in [
-                      '${_chairNameCtrl.text} (Chủ trì)',
-                      'Mr. John Miller (Technical Advisor)',
-                      'Herr Klaus Weber (Chefingenieur)',
-                      '${_secNameCtrl.text} (Thư ký)',
-                      'Đại biểu dự họp',
-                    ])
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: ActionChip(
-                          label: Text(preset, style: const TextStyle(fontSize: 11.5)),
-                          side: BorderSide.none,
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () {
-                            setState(() {
-                              _liveSpeakerCtrl.text = preset;
-                              if (preset.startsWith('Mr.')) {
-                                _selectedSpeechLocale = 'en-US';
-                              } else if (preset.startsWith('Herr')) {
-                                _selectedSpeechLocale = 'de-DE';
-                              } else {
-                                _selectedSpeechLocale = 'vi-VN';
-                              }
-                            });
-                          },
-                        ),
+              const SizedBox(height: 8),
+
+              // NÚT PHỤ: THU ÂM MỚI PHÒNG HỌP (KHI DỪNG CŨNG TỰ ĐỘNG GỠ BĂNG)
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: isRecording ? Colors.redAccent : null,
                       ),
+                      onPressed: _toggleMeetingRecording,
+                      icon: Icon(
+                        isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
+                        size: 18,
+                        color: isRecording ? Colors.redAccent : cs.primary,
+                      ),
+                      label: Text(
+                        isRecording
+                            ? 'Dừng Thu (${_formatDuration(elapsedSec)}) & Tự Sinh Biên Bản'
+                            : 'Hoặc Thu Âm Cuộc Họp Mới (Tự gỡ băng khi dừng)',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              if (isRecording) ...[
+                const SizedBox(height: 8),
+                LinearProgressIndicator(
+                  value: (peakAmp / 32767.0).clamp(0.03, 1.0),
+                  minHeight: 5,
+                  color: Colors.redAccent,
+                ),
+              ],
+
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: Divider(height: 1),
+              ),
+
+              // MỤC BỔ SUNG THỦ CÔNG (MẶC ĐỊNH THU GỌN ĐỂ KHÔNG PHẢI GÕ TAY)
+              InkWell(
+                onTap: () => setState(() => _showManualInputSection = !_showManualInputSection),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Bổ sung / Ghi chú thêm lượt phát biểu thủ công (Tùy chọn)',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    Icon(
+                      _showManualInputSection ? Icons.expand_less : Icons.expand_more,
+                      size: 20,
+                      color: cs.onSurfaceVariant,
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 4),
-              TextField(
-                controller: _liveSpeakerCtrl,
-                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-                decoration: const InputDecoration(
-                  labelText: 'Người đang phát biểu (Speaker / Redner)',
-                  isDense: true,
-                  border: UnderlineInputBorder(),
+              if (_showManualInputSection) ...[
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Nhập bổ sung:',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+                    ),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                      onPressed: _toggleVoiceDictation,
+                      icon: Icon(
+                        isListeningSpeech ? Icons.mic_off : Icons.record_voice_over,
+                        size: 17,
+                      ),
+                      label: Text(
+                        isListeningSpeech ? 'Dừng nghe' : 'Đọc Mic trực tiếp',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _liveContentCtrl,
-                maxLines: 3,
-                style: const TextStyle(fontSize: 13.5),
-                decoration: InputDecoration(
-                  labelText:
-                      'Nội dung phát biểu gốc [${_localeToShortTag(_selectedSpeechLocale)}] (Nhập tay hoặc bấm Đọc Giọng Nói)',
-                  hintText: 'Nhập hoặc đọc giọng nói Tiếng Việt, Tiếng Anh hoặc Tiếng Đức...',
-                  isDense: true,
-                  border: const UnderlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _liveTranslationCtrl,
-                maxLines: 2,
-                style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic),
-                decoration: const InputDecoration(
-                  labelText: 'Bản dịch đối sánh Việt / Anh / Đức (Tùy chọn)',
-                  hintText: 'Nhập bản dịch nghĩa sang Tiếng Việt / English / Deutsch nếu cần đối sánh...',
-                  isDense: true,
-                  border: UnderlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.tonalIcon(
-                  onPressed: _addLiveTurnToMinutes,
-                  icon: const Icon(Icons.playlist_add_check, size: 18),
-                  label: Text(
-                    'Đưa Lượt Phát Biểu [${_localeToShortTag(_selectedSpeechLocale)}] Vào Biên Bản',
+                TextField(
+                  controller: _liveSpeakerCtrl,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: const InputDecoration(
+                    labelText: 'Người phát biểu',
+                    isDense: true,
+                    border: UnderlineInputBorder(),
                   ),
                 ),
-              ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _liveContentCtrl,
+                  maxLines: 2,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: const InputDecoration(
+                    labelText: 'Nội dung phát biểu bổ sung',
+                    isDense: true,
+                    border: UnderlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.tonalIcon(
+                    onPressed: _addLiveTurnToMinutes,
+                    icon: const Icon(Icons.add, size: 17),
+                    label: const Text('Thêm vào Biên bản'),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
 
         const SizedBox(height: 16),
 
-        // DANH SÁCH LƯỢT PHÁT BIỂU ĐA NGÔN NGỮ ĐÃ GHI NHẬN (PHẲNG HÓA 100%)
-        Text(
-          'Diễn biến cuộc họp đa ngôn ngữ (${_speakerTurns.length} lượt phát biểu)',
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-        ),
-        const SizedBox(height: 8),
-        ..._speakerTurns.asMap().entries.map((entry) {
-          final idx = entry.key;
-          final turn = entry.value;
-          final Color langColor = turn.lang == 'DE'
-              ? Colors.amber.shade700
-              : (turn.lang == 'EN' ? Colors.cyan : cs.primary);
-
-          return Container(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-            decoration: BoxDecoration(
-              border: Border(
-                left: BorderSide(color: langColor, width: 3.5),
-                bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.45), width: 0.8),
+        // DANH SÁCH NỘI DUNG ĐÃ TỰ ĐỘNG GỠ BĂNG TỪ FILE GHI ÂM (PHẲNG HÓA 100%)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                'Nội dung tự động gỡ băng (${_speakerTurns.length} đoạn phát biểu)',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${idx + 1}. [${turn.lang}] ${turn.speaker}',
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.2),
+            if (_speakerTurns.isNotEmpty)
+              TextButton.icon(
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                onPressed: () => _exportDocxAndOptionallyShare(shareImmediately: true),
+                icon: const Icon(Icons.description_outlined, size: 17),
+                label: const Text('Xuất .DOCX Ngay'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+
+        if (_speakerTurns.isEmpty && !isAutoProcessing)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(color: cs.outlineVariant, width: 3),
+              ),
+            ),
+            child: Text(
+              'Chưa có dữ liệu gỡ băng.\nHãy bấm nút "Nhập File Ghi Âm (.M4A/.WAV/.MP3) -> Tự Sinh Biên Bản" ở trên (hoặc chọn file từ tab "File Máy") để hệ thống tự động tách câu, gỡ băng và lập Biên bản cuộc họp mà không cần nhập tay.',
+              style: TextStyle(fontSize: 12.8, color: cs.onSurfaceVariant, height: 1.4),
+            ),
+          )
+        else
+          ..._speakerTurns.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final turn = entry.value;
+            final Color langColor = turn.lang == 'DE'
+                ? Colors.amber.shade700
+                : (turn.lang == 'EN' ? Colors.cyan : cs.primary);
+
+            return Container(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: langColor, width: 3.5),
+                  bottom: BorderSide(color: cs.outlineVariant.withOpacity(0.45), width: 0.8),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${idx + 1}. [${turn.lang}] ${turn.speaker}',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.2),
+                        ),
                       ),
-                    ),
+                      Text(
+                        '[${turn.timestamp}]',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontFamily: 'monospace',
+                          color: cs.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        onPressed: () {
+                          setState(() {
+                            _speakerTurns.removeAt(idx);
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  Text(
+                    turn.content,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  if (turn.translation.trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
                     Text(
-                      '[${turn.timestamp}]',
+                      '↳ Dịch đối sánh: ${turn.translation}',
                       style: TextStyle(
-                        fontSize: 11.5,
-                        fontFamily: 'monospace',
-                        color: cs.primary,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 12.2,
+                        fontStyle: FontStyle.italic,
+                        color: cs.onSurfaceVariant,
                       ),
-                    ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      onPressed: () {
-                        setState(() {
-                          _speakerTurns.removeAt(idx);
-                        });
-                      },
                     ),
                   ],
-                ),
-                Text(
-                  turn.content,
-                  style: const TextStyle(fontSize: 13),
-                ),
-                if (turn.translation.trim().isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '↳ Dịch đối sánh: ${turn.translation}',
-                    style: TextStyle(
-                      fontSize: 12.2,
-                      fontStyle: FontStyle.italic,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
                 ],
-              ],
-            ),
-          );
-        }),
+              ),
+            );
+          }),
       ],
     );
   }
@@ -1305,10 +1242,10 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 child: Row(
                   children: [
                     for (final m in [
-                      {'id': 'VI_EN_DE', 'label': '🇻🇳🇬🇧🇩🇪 Đa ngữ Việt - Anh - Đức'},
+                      {'id': 'VI', 'label': '🇻🇳 Tiếng Việt (NĐ 30/2020)'},
                       {'id': 'VI_EN', 'label': '🇻🇳🇬🇧 Song ngữ Việt - Anh'},
                       {'id': 'VI_DE', 'label': '🇻🇳🇩🇪 Song ngữ Việt - Đức'},
-                      {'id': 'VI', 'label': '🇻🇳 Tiếng Việt (NĐ 30/2020)'},
+                      {'id': 'VI_EN_DE', 'label': '🇻🇳🇬🇧🇩🇪 Đa ngữ Việt - Anh - Đức'},
                     ])
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
@@ -1371,7 +1308,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               TextField(
                 controller: _meetingTitleCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Tiêu đề Biên bản (Tự động đối sánh theo chế độ ngôn ngữ)',
+                  labelText: 'Tiêu đề Biên bản',
                   isDense: true,
                   border: UnderlineInputBorder(),
                 ),
@@ -1381,7 +1318,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 controller: _meetingSubjectCtrl,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  labelText: 'Trích yếu nội dung cuộc họp (Subject / Betreff)',
+                  labelText: 'Trích yếu nội dung cuộc họp',
                   isDense: true,
                   border: UnderlineInputBorder(),
                 ),
@@ -1416,7 +1353,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               TextField(
                 controller: _venueCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Địa điểm / Hình thức họp (Venue / Ort)',
+                  labelText: 'Địa điểm / Hình thức họp',
                   isDense: true,
                   border: UnderlineInputBorder(),
                 ),
@@ -1431,7 +1368,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     child: TextField(
                       controller: _chairNameCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Họ tên Chủ trì (Chairperson / Leitung)',
+                        labelText: 'Họ tên Chủ trì',
                         isDense: true,
                         border: UnderlineInputBorder(),
                       ),
@@ -1457,7 +1394,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     child: TextField(
                       controller: _secNameCtrl,
                       decoration: const InputDecoration(
-                        labelText: 'Họ tên Thư ký (Secretary / Protokoll)',
+                        labelText: 'Họ tên Thư ký',
                         isDense: true,
                         border: UnderlineInputBorder(),
                       ),
@@ -1481,7 +1418,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 controller: _attendeesCtrl,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  labelText: 'Thành viên tham dự (cách nhau bởi dấu chấm phẩy)',
+                  labelText: 'Thành viên tham dự',
                   isDense: true,
                   border: UnderlineInputBorder(),
                 ),
@@ -1492,9 +1429,9 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 child: Divider(height: 1),
               ),
 
-              // 2. KẾT LUẬN CỦA CHỦ TRÌ CUỘC HỌP
+              // 2. KẾT LUẬN TỰ ĐỘNG TRÍCH XUẤT
               const Text(
-                'III. Kết luận cuộc họp (Conclusions / Beschlüsse)',
+                'III. Kết luận cuộc họp (Tự động trích xuất / Chỉnh sửa)',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
               ),
               const SizedBox(height: 6),
@@ -1534,7 +1471,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     child: TextField(
                       controller: _newConclusionCtrl,
                       decoration: const InputDecoration(
-                        hintText: 'Nhập thêm ý kết luận (Việt / Anh / Đức)...',
+                        hintText: 'Nhập thêm ý kết luận (nếu cần)...',
                         isDense: true,
                         border: UnderlineInputBorder(),
                       ),
@@ -1561,9 +1498,9 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 child: Divider(height: 1),
               ),
 
-              // 3. BẢNG PHÂN CÔNG NHIỆM VỤ (ACTION ITEMS)
+              // 3. BẢNG PHÂN CÔNG NHIỆM VỤ
               const Text(
-                'Bảng phân công nhiệm vụ (Action Items / Aufgaben)',
+                'Bảng phân công nhiệm vụ (Tự động trích xuất / Chỉnh sửa)',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
               ),
               const SizedBox(height: 6),
@@ -1610,86 +1547,6 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   ),
                 );
               }),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _newTaskNameCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Nội dung công việc (Task / Aufgabe)',
-                  isDense: true,
-                  border: UnderlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _newTaskAssigneeCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Chủ trì (Assignee)',
-                        isDense: true,
-                        border: UnderlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _newTaskCoordCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Phối hợp (Support)',
-                        isDense: true,
-                        border: UnderlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 95,
-                    child: TextField(
-                      controller: _newTaskDeadlineCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Thời hạn',
-                        isDense: true,
-                        border: UnderlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.tonalIcon(
-                  onPressed: () {
-                    final t = _newTaskNameCtrl.text.trim();
-                    if (t.isNotEmpty) {
-                      setState(() {
-                        _actionItems.add(
-                          ActionTaskItem(
-                            task: t,
-                            assignee: _newTaskAssigneeCtrl.text.trim().isEmpty
-                                ? 'Chuyên viên phụ trách'
-                                : _newTaskAssigneeCtrl.text.trim(),
-                            coordinator: _newTaskCoordCtrl.text.trim().isEmpty
-                                ? 'Các bộ phận'
-                                : _newTaskCoordCtrl.text.trim(),
-                            deadline: _newTaskDeadlineCtrl.text.trim().isEmpty
-                                ? 'Trong tuần'
-                                : _newTaskDeadlineCtrl.text.trim(),
-                          ),
-                        );
-                        _newTaskNameCtrl.clear();
-                        _newTaskAssigneeCtrl.clear();
-                        _newTaskCoordCtrl.clear();
-                        _newTaskDeadlineCtrl.clear();
-                      });
-                    }
-                  },
-                  icon: const Icon(Icons.add_task, size: 18),
-                  label: const Text('Thêm Nhiệm Vụ Vào Bảng'),
-                ),
-              ),
             ],
           ),
         ),
@@ -1710,10 +1567,10 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           child: Row(
             children: [
               for (final m in [
-                {'id': 'VI_EN_DE', 'label': '🇻🇳🇬🇧🇩🇪 Việt-Anh-Đức'},
+                {'id': 'VI', 'label': '🇻🇳 Tiếng Việt (NĐ 30/2020)'},
                 {'id': 'VI_EN', 'label': '🇻🇳🇬🇧 Việt-Anh'},
                 {'id': 'VI_DE', 'label': '🇻🇳🇩🇪 Việt-Đức'},
-                {'id': 'VI', 'label': '🇻🇳 Tiếng Việt'},
+                {'id': 'VI_EN_DE', 'label': '🇻🇳🇬🇧🇩🇪 Việt-Anh-Đức'},
               ])
                 Padding(
                   padding: const EdgeInsets.only(right: 6, bottom: 8),
@@ -1760,14 +1617,14 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: Text(
-              'File vừa xuất: $_lastExportedDocxPath\n(Đồng thời đã lưu bản sao trong thư mục /Download/AnhsTeam_BienBanHop/ của điện thoại)',
+              'File Word vừa tự sinh: $_lastExportedDocxPath\n(Đã lưu trong thư mục /Download/AnhsTeam_BienBanHop/ của điện thoại)',
               style: TextStyle(fontSize: 12, color: cs.primary, fontWeight: FontWeight.w600),
             ),
           ),
 
         const SizedBox(height: 12),
 
-        // DUY NHẤT 1 THẺ XEM TRƯỚC BIÊN BẢN HÀNH CHÍNH ĐA NGÔN NGỮ (SINGLE-LEVEL CARD)
+        // DUY NHẤT 1 THẺ XEM TRƯỚC BIÊN BẢN HÀNH CHÍNH (SINGLE-LEVEL CARD)
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -1791,7 +1648,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Bản xem trước Biên bản Đa ngữ ($_docLanguageMode) • Chuẩn NĐ 30/2020/NĐ-CP',
+                      'Bản xem trước Biên bản ($_docLanguageMode) • Chuẩn NĐ 30/2020/NĐ-CP',
                       style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
                     ),
                   ),
@@ -1815,7 +1672,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     );
   }
 
-  /// TAB 4: QUẢN LÝ FILE TRONG MÁY, NHẬP FILE CÓ SẴN & KHO BIÊN BẢN (.DOCX / .WAV / .M4A / .MP3)
+  /// TAB 4: QUẢN LÝ FILE TRONG MÁY & CHẠY TỰ ĐỘNG 1-CHẠM
   Widget _buildStorageArchiveTab() {
     final cs = Theme.of(context).colorScheme;
     final playingPath = (_status['currentlyPlayingPath'] ?? '').toString();
@@ -1823,12 +1680,11 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       children: [
-        // Nút chọn file bất kỳ từ bộ nhớ máy
         FilledButton.icon(
           onPressed: _pickAndImportExistingFile,
-          icon: const Icon(Icons.upload_file),
+          icon: const Icon(Icons.auto_fix_high),
           label: const Text(
-            'Chọn Tệp Từ Bộ Nhớ Máy (Audio .M4A/.WAV/.MP3 hoặc .TXT/.SRT/.DOCX/.JSON)',
+            'Chọn Tệp Từ Bộ Nhớ Máy -> Tự Động Gỡ Băng & Sinh Biên Bản (.DOCX)',
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
@@ -1843,7 +1699,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text(
-              'Chưa có tệp .docx nào. Hãy sang tab "Xuất Word" và bấm "Xuất File .DOCX".',
+              'Chưa có tệp .docx nào.',
               style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
             ),
           )
@@ -1906,7 +1762,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
         const SizedBox(height: 20),
 
         Text(
-          '2. Tệp Ghi âm Phòng họp & File Có Sẵn Trong Máy (${_recordings.length})',
+          '2. Tệp Ghi âm Đã Nhập & Có Sẵn Trong Máy (${_recordings.length})',
           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
         ),
         const SizedBox(height: 6),
@@ -1914,7 +1770,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text(
-              'Chưa có tệp âm thanh nào. Bấm nút "Chọn Tệp Từ Bộ Nhớ Máy" ở trên để nhập file ghi âm có sẵn.',
+              'Chưa có tệp âm thanh nào.',
               style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
             ),
           )
@@ -1975,14 +1831,14 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     ),
                   ),
                   Wrap(
-                    spacing: 4,
+                    spacing: 6,
                     alignment: WrapAlignment.end,
                     children: [
-                      TextButton.icon(
-                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                        onPressed: () => _loadExistingAudioItemIntoMinutes(rec),
-                        icon: const Icon(Icons.post_add, size: 17),
-                        label: const Text('Nạp Tạo Biên Bản'),
+                      FilledButton.tonalIcon(
+                        style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
+                        onPressed: () => _autoGenerateMinutesFromAudioItem(rec),
+                        icon: const Icon(Icons.auto_fix_high, size: 16),
+                        label: const Text('Tự Động Sinh Biên Bản'),
                       ),
                       TextButton.icon(
                         style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
@@ -1999,17 +1855,6 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                           size: 18,
                         ),
                         label: Text(isPlaying ? 'Dừng' : 'Nghe'),
-                      ),
-                      TextButton.icon(
-                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                        onPressed: () {
-                          _channel.invokeMethod('shareFile', {
-                            'path': path,
-                            'mimeType': 'audio/*',
-                          });
-                        },
-                        icon: const Icon(Icons.share_outlined, size: 17),
-                        label: const Text('Chia sẻ'),
                       ),
                     ],
                   ),

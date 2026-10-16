@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Quyền thu âm phòng họp, nhận dạng giọng nói và lưu/chia sẻ tệp Biên bản .docx -->
+    <!-- Quyền kết nối dịch vụ nhận dạng giọng nói độ chính xác cao, thu âm & xuất tệp Biên bản .docx -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
