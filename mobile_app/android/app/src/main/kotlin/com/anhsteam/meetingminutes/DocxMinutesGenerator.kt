@@ -247,8 +247,8 @@ object DocxMinutesGenerator {
         val locationDate = root.optString("locationDate", "Hà Nội, ngày 16 tháng 10 năm 2026")
         val customTitle = root.optString("meetingTitle", "").trim()
         val meetingTitle = if (isMonologue) {
-            if (customTitle.isNotEmpty() && customTitle != "BIÊN BẢN CUỘC HỌP") customTitle
-            else "BẢN GỠ BĂNG & TÓM TẮT NỘI DUNG GHI ÂM"
+            if (customTitle.isNotEmpty() && customTitle != "BIÊN BẢN CUỘC HỌP" && customTitle != "BẢN GỠ BĂNG & TÓM TẮT NỘI DUNG GHI ÂM") customTitle
+            else "BẢN GỠ BĂNG NGUYÊN VĂN NỘI DUNG GHI ÂM (01 NGƯỜI NÓI)"
         } else {
             if (customTitle.isEmpty() || customTitle == "BIÊN BẢN CUỘC HỌP") labels.defaultDocTitle
             else customTitle
@@ -302,23 +302,48 @@ object DocxMinutesGenerator {
 
         if (isMonologue) {
             // =========================================================================
-            // CHẾ ĐỘ 1: BẢN GỠ BĂNG ĐỘC THOẠI (CHỈ 01 NGƯỜI NÓI - KHÔNG PHẢI BIÊN BẢN HỌP)
+            // CHẾ ĐỘ 1: BẢN GỠ BĂNG NGUYÊN VĂN 100% (CHỈ 01 NGƯỜI NÓI - KHÔNG TÓM TẮT)
             // =========================================================================
-            bodyXml.append(buildParagraphXml("I. THÔNG TIN TỆP GHI ÂM & KẾT QUẢ PHÂN TÍCH GIỌNG NÓI (SPEAKER DIARIZATION)", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 120, spaceAfterDxa = 60))
+            bodyXml.append(buildParagraphXml("I. THÔNG TIN TỆP GHI ÂM & NHẬN DIỆN GIỌNG NÓI (SPEAKER DIARIZATION)", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 120, spaceAfterDxa = 60))
             bodyXml.append(buildParagraphXml("1. Thời điểm ghi nhận tệp âm thanh: $startTime.", halfPtSize = 26, bold = false, jc = "left"))
             bodyXml.append(buildParagraphXml("2. Nguồn tệp âm thanh: $venue.", halfPtSize = 26, bold = false, jc = "left"))
-            bodyXml.append(buildParagraphXml("3. Kết quả phân biệt giọng nói âm học: Phát hiện duy nhất 01 người nói (Không có sự luân phiên giọng nói của cuộc họp nhiều thành viên).", halfPtSize = 26, bold = true, jc = "left"))
+            bodyXml.append(buildParagraphXml("3. Kết quả phân biệt giọng nói âm học: Phát hiện duy nhất 01 người nói (Không phải cuộc họp nhiều người).", halfPtSize = 26, bold = true, jc = "left"))
             if (diarizationReport.isNotEmpty()) {
                 bodyXml.append(buildParagraphXml("- Chi tiết sinh trắc giọng nói: $diarizationReport", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
             }
-            bodyXml.append(buildParagraphXml("4. Phân loại tài liệu tự động: Bản gỡ băng độc thoại / Ghi chú âm thanh cá nhân (Không áp dụng mẫu Biên bản cuộc họp).", halfPtSize = 26, italic = true, jc = "left"))
+            bodyXml.append(buildParagraphXml("4. Chế độ xuất văn bản: Gỡ băng nguyên văn 100% lời nói từ đầu đến cuối tệp âm thanh (Không cắt bớt, không tóm tắt, không áp dụng mẫu Biên bản cuộc họp).", halfPtSize = 26, italic = true, jc = "left"))
 
-            // Mục II: Toàn văn lời nói theo mốc thời gian
-            bodyXml.append(buildParagraphXml("II. TOÀN VĂN NỘI DUNG GỠ BĂNG THEO MỐC THỜI GIAN (01 NGƯỜI NÓI)", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
+            // Mục II: Văn bản nguyên văn liền mạch 100% (Full Continuous Verbatim Text)
+            bodyXml.append(buildParagraphXml("II. TOÀN VĂN NỘI DUNG GỠ BĂNG NGUYÊN VĂN LIỀN MẠCH (100% VERBATIM - KHÔNG TÓM TẮT)", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
 
             if (turnsArray.length() == 0) {
                 bodyXml.append(buildParagraphXml("- (Chưa ghi nhận nội dung văn bản).", halfPtSize = 26, italic = true, jc = "left"))
             } else {
+                val fullVerbatimParts = mutableListOf<String>()
+                for (i in 0 until turnsArray.length()) {
+                    val turn = turnsArray.optJSONObject(i) ?: continue
+                    val content = turn.optString("content", "").trim()
+                    if (content.isNotEmpty()) {
+                        val cleaned = content.split("\n").map { it.trim().removePrefix("-").trim() }.filter { it.isNotEmpty() }.joinToString(" ")
+                        if (cleaned.isNotEmpty()) {
+                            val withPunct = if (cleaned.endsWith(".") || cleaned.endsWith("!") || cleaned.endsWith("?")) cleaned else "$cleaned."
+                            fullVerbatimParts.add(withPunct)
+                        }
+                    }
+                }
+                if (fullVerbatimParts.isNotEmpty()) {
+                    // Ghép thành các đoạn văn nguyên văn hoàn chỉnh (mỗi đoạn ~4 phân đoạn để dễ đọc, giữ nguyên 100% từng chữ)
+                    val groupSize = 4
+                    for (g in fullVerbatimParts.indices step groupSize) {
+                        val slice = fullVerbatimParts.subList(g, (g + groupSize).coerceAtMost(fullVerbatimParts.size))
+                        val paragraphText = slice.joinToString(" ")
+                        bodyXml.append(buildParagraphXml(paragraphText, halfPtSize = 26, bold = false, jc = "both", spaceBeforeDxa = 60, spaceAfterDxa = 80, firstLineIndentDxa = 425))
+                    }
+                }
+
+                // Mục III: Chi tiết nguyên văn theo từng mốc thời gian
+                bodyXml.append(buildParagraphXml("III. CHI TIẾT NGUYÊN VĂN THEO TỪNG MỐC THỜI GIAN (01 NGƯỜI NÓI)", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
+
                 for (i in 0 until turnsArray.length()) {
                     val turn = turnsArray.optJSONObject(i) ?: continue
                     val speaker = turn.optString("speaker", "Người nói duy nhất")
@@ -337,7 +362,7 @@ object DocxMinutesGenerator {
                     val sentences = content.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
                     for (line in sentences) {
                         val cleanLine = if (line.startsWith("-")) line.substring(1).trim() else line
-                        bodyXml.append(buildParagraphXml("- $cleanLine", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
+                        bodyXml.append(buildParagraphXml(cleanLine, halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
                     }
 
                     if (translation.isNotEmpty()) {
@@ -346,7 +371,7 @@ object DocxMinutesGenerator {
                             val cleanTrans = if (tLine.startsWith("-")) tLine.substring(1).trim() else tLine
                             bodyXml.append(
                                 buildParagraphXml(
-                                    "- [${labels.translationPrefix}]: $cleanTrans",
+                                    "[${labels.translationPrefix}]: $cleanTrans",
                                     halfPtSize = 25,
                                     italic = true,
                                     jc = "both",
@@ -358,21 +383,9 @@ object DocxMinutesGenerator {
                 }
             }
 
-            // Mục III: Tóm tắt ý chính của bản ghi độc thoại
-            bodyXml.append(buildParagraphXml("III. TÓM TẮT CÁC Ý CHÍNH TRONG BẢN GHI ÂM", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
-            if (conclusionsArray.length() > 0) {
-                for (i in 0 until conclusionsArray.length()) {
-                    val c = conclusionsArray.optString(i, "").trim()
-                    if (c.isNotEmpty()) {
-                        val cleanC = if (c.startsWith("-")) c.substring(1).trim() else c
-                        bodyXml.append(buildParagraphXml("- $cleanC", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
-                    }
-                }
-            }
-
             bodyXml.append(
                 buildParagraphXml(
-                    "Bản gỡ băng và tóm tắt nội dung ghi âm độc thoại (01 người nói) hoàn tất lúc $endTime./.",
+                    "Bản gỡ băng nguyên văn 100% nội dung ghi âm độc thoại (01 người nói - không tóm tắt) hoàn tất lúc $endTime./.",
                     halfPtSize = 26,
                     italic = true,
                     jc = "both",

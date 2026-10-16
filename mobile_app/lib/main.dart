@@ -243,7 +243,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           if (_wasAutoProcessing || isAuto) {
             _documentType = autoDocType;
             if (_documentType == 'MONOLOGUE') {
-              _meetingTitleCtrl.text = 'BẢN GỠ BĂNG & TÓM TẮT NỘI DUNG GHI ÂM';
+              _meetingTitleCtrl.text = 'BẢN GỠ BĂNG NGUYÊN VĂN NỘI DUNG GHI ÂM (01 NGƯỜI NÓI)';
               _docNumCtrl.text = 'Số: 01/2026/GB-AT';
             } else {
               _meetingTitleCtrl.text = 'BIÊN BẢN CUỘC HỌP';
@@ -617,7 +617,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     sb.writeln('');
 
     if (isMonologue) {
-      sb.writeln('I. THÔNG TIN BẢN GHI ÂM & PHÂN TÍCH GIỌNG NÓI (SPEAKER DIARIZATION)');
+      sb.writeln('I. THÔNG TIN BẢN GHI ÂM & NHẬN DIỆN GIỌNG NÓI (SPEAKER DIARIZATION)');
       sb.writeln('1. Thời điểm ghi nhận: ${_startTimeCtrl.text.trim()}.');
       sb.writeln('2. Nguồn tệp âm thanh: ${_venueCtrl.text.trim()}.');
       sb.writeln(
@@ -625,18 +625,27 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
       if (_diarizationReport.isNotEmpty) {
         sb.writeln('- Chi tiết sinh trắc giọng nói: $_diarizationReport');
       }
-      sb.writeln('4. Phân loại tự động: Bản gỡ băng độc thoại / Ghi chú âm thanh cá nhân.');
+      sb.writeln(
+          '4. Chế độ xuất văn bản: Gỡ băng nguyên văn 100% lời nói từ đầu đến cuối (Không tóm tắt, không cắt bớt).');
       sb.writeln('');
-      sb.writeln('II. TOÀN VĂN NỘI DUNG LỜI NÓI THEO MỐC THỜI GIAN (01 NGƯỜI NÓI)');
+      sb.writeln('II. TOÀN VĂN NỘI DUNG GỠ BĂNG NGUYÊN VĂN LIỀN MẠCH (100% VERBATIM - KHÔNG TÓM TẮT)');
       if (_speakerTurns.isEmpty) {
         sb.writeln('- (Chưa có nội dung gỡ băng).');
       } else {
+        final fullVerbatim = _speakerTurns
+            .map((t) => t.content.trim())
+            .where((s) => s.isNotEmpty)
+            .map((s) => (s.endsWith('.') || s.endsWith('!') || s.endsWith('?')) ? s : '$s.')
+            .join(' ');
+        sb.writeln(fullVerbatim);
+        sb.writeln('');
+        sb.writeln('III. CHI TIẾT NGUYÊN VĂN THEO TỪNG MỐC THỜI GIAN (01 NGƯỜI NÓI)');
         for (int i = 0; i < _speakerTurns.length; i++) {
           final t = _speakerTurns[i];
           sb.writeln('Đoạn ${i + 1} [${t.timestamp}] • [${t.lang}] ${t.speaker}:');
           for (final line in t.content.split('\n')) {
             if (line.trim().isNotEmpty) {
-              sb.writeln('- ${line.trim()}');
+              sb.writeln(line.trim());
             }
           }
           if (t.translation.trim().isNotEmpty) {
@@ -645,13 +654,8 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
         }
       }
       sb.writeln('');
-      sb.writeln('III. TÓM TẮT CÁC Ý CHÍNH TRONG BẢN GHI ÂM');
-      for (final c in _conclusions) {
-        sb.writeln('- $c');
-      }
-      sb.writeln('');
       sb.writeln(
-          'Bản gỡ băng và tóm tắt nội dung ghi âm độc thoại (01 người nói) hoàn tất lúc ${_endTimeCtrl.text.trim()}./.');
+          'Bản gỡ băng nguyên văn 100% nội dung ghi âm độc thoại (01 người nói - không tóm tắt) hoàn tất lúc ${_endTimeCtrl.text.trim()}./.');
       return sb.toString();
     }
 
@@ -954,9 +958,9 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     Expanded(
                       child: Text(
                         isAutoProcessing
-                            ? 'ĐANG PHÂN TÍCH GIỌNG NÓI & GỠ BĂNG ($autoProgressPct%)'
+                            ? 'ĐANG PHÂN TÍCH GIỌNG NÓI & GỠ BĂNG NGUYÊN VĂN ($autoProgressPct%)'
                             : (_documentType == 'MONOLOGUE'
-                                ? 'PHÁT HIỆN: CHỈ 01 NGƯỜI NÓI (XUẤT BẢN GỠ BĂNG ĐỘC THOẠI)'
+                                ? 'PHÁT HIỆN: 01 NGƯỜI NÓI (BẢN GỠ BĂNG NGUYÊN VĂN 100% - KHÔNG TÓM TẮT)'
                                 : 'HOÀN TẤT BIÊN BẢN CUỘC HỌP ($_detectedSpeakerCount GIỌNG NÓI)'),
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
@@ -1020,7 +1024,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                         icon: const Icon(Icons.share, size: 17),
                         label: Text(
                           _documentType == 'MONOLOGUE'
-                              ? 'Chia Sẻ Bản Gỡ Băng (.DOCX)'
+                              ? 'Chia Sẻ Bản Gỡ Băng Nguyên Văn (.DOCX)'
                               : 'Chia Sẻ Biên Bản Họp (.DOCX)',
                         ),
                       ),
@@ -1156,7 +1160,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                       padding: const EdgeInsets.only(right: 6),
                       child: ChoiceChip(
                         label: const Text(
-                          '🎙️ Độc thoại (01 người nói - Bản gỡ băng)',
+                          '🎙️ 01 Người nói (Gỡ băng Nguyên văn 100% - Không tóm tắt)',
                           style: TextStyle(fontSize: 12.0),
                         ),
                         selected: _documentType == 'MONOLOGUE',
@@ -1166,6 +1170,8 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                         onSelected: (_) {
                           setState(() {
                             _documentType = 'MONOLOGUE';
+                            _meetingTitleCtrl.text =
+                                'BẢN GỠ BĂNG NGUYÊN VĂN NỘI DUNG GHI ÂM (01 NGƯỜI NÓI)';
                             _lastExportedDocxPath = '';
                           });
                         },
@@ -1173,7 +1179,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     ),
                     ChoiceChip(
                       label: const Text(
-                        '👥 Cuộc họp (Nhiều người nói - Biên bản họp)',
+                        '👥 Nhiều người nói (Biên bản cuộc họp)',
                         style: TextStyle(fontSize: 12.0),
                       ),
                       selected: _documentType == 'MEETING',
@@ -1183,6 +1189,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                       onSelected: (_) {
                         setState(() {
                           _documentType = 'MEETING';
+                          _meetingTitleCtrl.text = 'BIÊN BẢN CUỘC HỌP';
                           _lastExportedDocxPath = '';
                         });
                       },
@@ -1202,7 +1209,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                       icon: const Icon(Icons.share, size: 18),
                       label: Text(
                         _documentType == 'MONOLOGUE'
-                            ? 'Chia Sẻ Bản Gỡ Băng 01 Người (.DOCX)'
+                            ? 'Chia Sẻ Bản Gỡ Băng Nguyên Văn (.DOCX)'
                             : 'Chia Sẻ Biên Bản Cuộc Họp (.DOCX)',
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.8),
                       ),

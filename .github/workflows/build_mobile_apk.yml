@@ -62,16 +62,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main')
         with:
-          tag_name: v1.5.0
-          name: "Anh's TEAM - Phân Biệt Giọng Nói (Speaker Diarization) & Tự Phát Hiện Độc Thoại 01 Người vs Biên Bản Họp v1.5.0 (Android APK)"
+          tag_name: v1.6.0
+          name: "Anh's TEAM - Phân Biệt Giọng Nói & Xuất Bản Gỡ Băng Nguyên Văn 100% (Không Tóm Tắt) v1.6.0 (Android APK)"
           body: |
-            ## Ứng Dụng Ghi Âm Phòng Họp, Phân Biệt Giọng Nói (Voice Biometrics) & Tự Sinh Tài Liệu (.DOCX) - Anh's TEAM (v1.5.0)
-            - **Phân tích Sinh trắc học Giọng nói DSP (`VoiceSignature` & `Speaker Diarization`)**:
-              + Đo tần số cơ bản thanh quản ($F_0$ Hz qua hàm tự tương quan chuẩn hóa Normalized Autocorrelation trong dải `[75Hz - 340Hz]`), độ sáng phổ âm sắc (Spectral Brightness) và Zero-Crossing Rate (ZCR) trên từng phân đoạn tiếng nói.
-              + Tự động phân cụm và gắn nhãn các giọng nói khác nhau (`Người nói #1 (Giọng Nam trầm ~115Hz)`, `Người nói #2 (Giọng Nữ/Cao ~210Hz)`...) khi có từ 2 người trở lên tham gia cuộc họp.
-            - **Tự động nhận diện Nội dung Độc thoại (01 người nói) vs Biên bản Cuộc họp (Nhiều người nói)**:
-              + **`MONOLOGUE` (Chỉ 01 người nói)**: Khi phát hiện toàn bộ file ghi âm chỉ có 01 người nói (và không có cấu trúc chủ trì/thư ký cuộc họp), hệ thống tự động chuyển sang mẫu **"BẢN GỠ BĂNG & TÓM TẮT NỘI DUNG GHI ÂM (01 NGƯỜI NÓI - KHÔNG PHẢI BIÊN BẢN HỌP)"**, tuyệt đối không gán ép Chủ trì, Thư ký hay Bảng phân công nhiệm vụ giả định.
-              + **`MEETING` ($\ge 2$ giọng nói khác nhau)**: Xuất đầy đủ **BIÊN BẢN CUỘC HỌP** chuẩn Nghị định 30/2020/NĐ-CP kèm báo cáo phân cụm giọng nói và ghi nhận ý kiến theo từng người phát biểu.
+            ## Ứng Dụng Ghi Âm Phòng Họp, Phân Biệt Giọng Nói (Voice Biometrics) & Xuất Gỡ Băng Nguyên Văn 100% (.DOCX) - Anh's TEAM (v1.6.0)
+            - **Chế độ 01 người nói (`MONOLOGUE`) — BẢN GỠ BĂNG NGUYÊN VĂN NỘI DUNG GHI ÂM (100% VERBATIM - KHÔNG TÓM TẮT)**:
+              + Khi phát hiện toàn bộ file ghi âm chỉ có 01 người nói, hệ thống xuất **100% nội dung nguyên văn từ đầu đến cuối** (gồm cả **Mục II: Văn bản nguyên văn liền mạch** nối liền toàn bộ các câu chữ để đọc/copy thuận tiện và **Mục III: Chi tiết nguyên văn theo từng mốc thời gian**).
+              + **Tuyệt đối không tóm tắt**, không cắt bớt nội dung và không gán ép Chủ trì / Thư ký / Bảng phân công nhiệm vụ giả định.
+            - **Chế độ nhiều người nói (`MEETING`) — BIÊN BẢN CUỘC HỌP ($\ge 2$ giọng nói khác nhau)**:
+              + Đo tần số thanh quản ($F_0$ Hz) và âm sắc để phân biệt `Người nói #1`, `Người nói #2`, `Người nói #3`... và xuất Biên bản cuộc họp đầy đủ theo Nghị định 30/2020/NĐ-CP.
           files: build-output/AnhsTeam_MeetingMinutes.apk
           draft: false
           prerelease: false

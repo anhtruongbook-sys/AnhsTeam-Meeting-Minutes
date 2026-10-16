@@ -282,16 +282,16 @@ class AutoAudioMinutesProcessor(private val context: Context) {
                     )
                 }
 
-                // Bước 4: Tổng hợp Tóm tắt (cho Độc thoại 1 người) hoặc Kết luận & Bảng giao việc (cho Biên bản họp nhiều người)
+                // Bước 4: Xuất nguyên văn 100% (cho Độc thoại 1 người) hoặc Tổng hợp Kết luận & Bảng giao việc (cho Biên bản họp nhiều người)
                 progressPercent = 95
                 statusMessage = if (detectedDocumentType == "MONOLOGUE") {
-                    "Phát hiện chỉ 01 người nói (Không phải cuộc họp). Đang xuất Bản Gỡ Băng & Tóm Tắt Ghi Âm (.docx)..."
+                    "Phát hiện chỉ 01 người nói (Không phải cuộc họp). Đang xuất Bản Gỡ Băng Nguyên Văn 100% - Không Tóm Tắt (.docx)..."
                 } else {
                     "Phát hiện $detectedSpeakerCount người nói. Đang tổng hợp Kết luận, Bảng giao việc & Xuất Biên Bản Họp (.docx)..."
                 }
                 synthesizeConclusionsAndActions(audioFile.name, sourceAudioDurationSec)
 
-                // Bước 5: Tự động xuất ngay tệp Word (.docx) theo đúng loại (Độc thoại 1 người vs Biên bản họp nhiều người)
+                // Bước 5: Tự động xuất ngay tệp Word (.docx) theo đúng loại (Độc thoại 1 người nguyên văn vs Biên bản họp nhiều người)
                 val autoJson = buildAutoMeetingJson(audioFile, sourceAudioDurationSec, docLanguageMode)
                 val docxResult = DocxMinutesGenerator.generateDocxFile(
                     context = context,
@@ -304,7 +304,7 @@ class AutoAudioMinutesProcessor(private val context: Context) {
 
                 progressPercent = 100
                 val docTypeLabel = if (detectedDocumentType == "MONOLOGUE") {
-                    "BẢN GỠ BĂNG ĐỘC THOẠI (01 NGƯỜI NÓI - KHÔNG PHẢI BIÊN BẢN HỌP)"
+                    "BẢN GỠ BĂNG NGUYÊN VĂN 100% (01 NGƯỜI NÓI - KHÔNG TÓM TẮT)"
                 } else {
                     "BIÊN BẢN CUỘC HỌP ($detectedSpeakerCount GIỌNG NÓI KHÁC NHAU)"
                 }
@@ -1151,7 +1151,7 @@ class AutoAudioMinutesProcessor(private val context: Context) {
 
     /**
      * Tự động trích xuất:
-     * - Nếu là Độc thoại 1 người nói (MONOLOGUE): Chỉ tạo Tóm tắt ý chính, KHÔNG tạo Bảng phân công nhiệm vụ giả.
+     * - Nếu là Độc thoại 1 người nói (MONOLOGUE): Giữ nguyên văn 100%, TUYỆT ĐỐI KHÔNG TÓM TẮT, KHÔNG tạo Bảng phân công nhiệm vụ giả.
      * - Nếu là Cuộc họp nhiều người (MEETING): Tạo Kết luận cuộc họp & Bảng phân công nhiệm vụ.
      */
     private fun synthesizeConclusionsAndActions(fileName: String, durationSec: Int) {
@@ -1159,12 +1159,7 @@ class AutoAudioMinutesProcessor(private val context: Context) {
         extractedActions.clear()
 
         if (detectedDocumentType == "MONOLOGUE") {
-            // Chế độ 01 người nói (Độc thoại / Ghi chú âm thanh): Chỉ tóm tắt nội dung, không tạo bảng giao việc giả
-            for (turn in transcribedTurns.take(4)) {
-                val content = turn["content"] ?: continue
-                val ts = turn["timestamp"] ?: ""
-                extractedConclusions.add("[$ts] $content")
-            }
+            // Chế độ 01 người nói (Độc thoại): Xuất nguyên văn 100%, không tóm tắt, không tạo bảng giao việc
             return
         }
 
@@ -1268,12 +1263,12 @@ class AutoAudioMinutesProcessor(private val context: Context) {
             put("locationDate", "Ngày $fmtDate")
             put(
                 "meetingTitle",
-                if (isMonologue) "BẢN GỠ BĂNG & TÓM TẮT NỘI DUNG GHI ÂM" else "BIÊN BẢN CUỘC HỌP"
+                if (isMonologue) "BẢN GỠ BĂNG NGUYÊN VĂN NỘI DUNG GHI ÂM (01 NGƯỜI NÓI)" else "BIÊN BẢN CUỘC HỌP"
             )
             put(
                 "meetingSubject",
                 if (isMonologue) {
-                    "Bản ghi độc thoại (01 người nói - Không phải biên bản họp): $baseTitle (Thời lượng: ${formatDuration(durationSec)})"
+                    "Bản gỡ băng nguyên văn 100% lời nói (01 người nói - Không tóm tắt): $baseTitle (Thời lượng: ${formatDuration(durationSec)})"
                 } else {
                     "Biên bản cuộc họp ($detectedSpeakerCount giọng nói khác nhau): $baseTitle (Thời lượng: ${formatDuration(durationSec)})"
                 }
