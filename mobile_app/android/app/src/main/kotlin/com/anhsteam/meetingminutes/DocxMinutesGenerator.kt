@@ -236,15 +236,22 @@ object DocxMinutesGenerator {
         val docLanguageMode = root.optString("docLanguageMode", "VI_EN_DE").ifBlank { "VI" }
         val labels = getLabelsForMode(docLanguageMode)
 
+        val documentType = root.optString("documentType", "MEETING").uppercase(Locale.US)
+        val isMonologue = documentType == "MONOLOGUE"
+        val detectedSpeakerCount = root.optInt("detectedSpeakerCount", if (isMonologue) 1 else 2)
+        val diarizationReport = root.optString("diarizationReport", "").trim()
+
         val orgName = root.optString("organizationName", "ANH'S TEAM").ifBlank { "ANH'S TEAM" }
         val govBody = root.optString("governingBody", "")
-        val docNumber = root.optString("documentNumber", "Số: 01/2026/BB-AT")
+        val docNumber = root.optString("documentNumber", if (isMonologue) "Số: 01/2026/GB-AT" else "Số: 01/2026/BB-AT")
         val locationDate = root.optString("locationDate", "Hà Nội, ngày 16 tháng 10 năm 2026")
         val customTitle = root.optString("meetingTitle", "").trim()
-        val meetingTitle = if (customTitle.isEmpty() || customTitle == "BIÊN BẢN CUỘC HỌP") {
-            labels.defaultDocTitle
+        val meetingTitle = if (isMonologue) {
+            if (customTitle.isNotEmpty() && customTitle != "BIÊN BẢN CUỘC HỌP") customTitle
+            else "BẢN GỠ BĂNG & TÓM TẮT NỘI DUNG GHI ÂM"
         } else {
-            customTitle
+            if (customTitle.isEmpty() || customTitle == "BIÊN BẢN CUỘC HỌP") labels.defaultDocTitle
+            else customTitle
         }
         val meetingSubject = root.optString("meetingSubject", "Về việc rà soát tiến độ và triển khai kế hoạch công tác")
         val startTime = root.optString("startTime", "08 giờ 30 phút ngày 16/10/2026")
@@ -293,165 +300,251 @@ object DocxMinutesGenerator {
         bodyXml.append(buildParagraphXml(meetingTitle.uppercase(Locale.getDefault()), halfPtSize = 27, bold = true, jc = "center", spaceBeforeDxa = 240, spaceAfterDxa = 40))
         bodyXml.append(buildParagraphXml(meetingSubject, halfPtSize = 26, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 180))
 
-        // 3. Mục I: Thời gian, địa điểm và thành phần tham dự
-        bodyXml.append(buildParagraphXml(labels.section1Title, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 120, spaceAfterDxa = 60))
-        bodyXml.append(buildParagraphXml("${labels.startTimeLabel}: $startTime.", halfPtSize = 26, bold = false, jc = "left"))
-        bodyXml.append(buildParagraphXml("${labels.venueLabel}: $venue.", halfPtSize = 26, bold = false, jc = "left"))
-        bodyXml.append(buildParagraphXml(labels.participantsLabel, halfPtSize = 26, bold = false, jc = "left"))
-        bodyXml.append(buildParagraphXml("- ${labels.chairLabel}: $chairName ($chairTitle).", halfPtSize = 26, bold = false, jc = "left"))
-        bodyXml.append(buildParagraphXml("- ${labels.secLabel}: $secName ($secTitle).", halfPtSize = 26, bold = false, jc = "left"))
-
-        if (attendeesRaw.isNotBlank()) {
-            val attLines = attendeesRaw.split("\n", ";").map { it.trim() }.filter { it.isNotEmpty() }
-            for (att in attLines) {
-                val cleanAtt = if (att.startsWith("-")) att.substring(1).trim() else att
-                bodyXml.append(buildParagraphXml("- ${labels.memberLabel}: $cleanAtt.", halfPtSize = 26, bold = false, jc = "left"))
+        if (isMonologue) {
+            // =========================================================================
+            // CHẾ ĐỘ 1: BẢN GỠ BĂNG ĐỘC THOẠI (CHỈ 01 NGƯỜI NÓI - KHÔNG PHẢI BIÊN BẢN HỌP)
+            // =========================================================================
+            bodyXml.append(buildParagraphXml("I. THÔNG TIN TỆP GHI ÂM & KẾT QUẢ PHÂN TÍCH GIỌNG NÓI (SPEAKER DIARIZATION)", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 120, spaceAfterDxa = 60))
+            bodyXml.append(buildParagraphXml("1. Thời điểm ghi nhận tệp âm thanh: $startTime.", halfPtSize = 26, bold = false, jc = "left"))
+            bodyXml.append(buildParagraphXml("2. Nguồn tệp âm thanh: $venue.", halfPtSize = 26, bold = false, jc = "left"))
+            bodyXml.append(buildParagraphXml("3. Kết quả phân biệt giọng nói âm học: Phát hiện duy nhất 01 người nói (Không có sự luân phiên giọng nói của cuộc họp nhiều thành viên).", halfPtSize = 26, bold = true, jc = "left"))
+            if (diarizationReport.isNotEmpty()) {
+                bodyXml.append(buildParagraphXml("- Chi tiết sinh trắc giọng nói: $diarizationReport", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
             }
-        }
+            bodyXml.append(buildParagraphXml("4. Phân loại tài liệu tự động: Bản gỡ băng độc thoại / Ghi chú âm thanh cá nhân (Không áp dụng mẫu Biên bản cuộc họp).", halfPtSize = 26, italic = true, jc = "left"))
 
-        // 4. Mục II: Nội dung diễn biến cuộc họp (Đa ngôn ngữ VI / EN / DE)
-        bodyXml.append(buildParagraphXml(labels.section2Title, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
+            // Mục II: Toàn văn lời nói theo mốc thời gian
+            bodyXml.append(buildParagraphXml("II. TOÀN VĂN NỘI DUNG GỠ BĂNG THEO MỐC THỜI GIAN (01 NGƯỜI NÓI)", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
 
-        if (turnsArray.length() == 0) {
-            bodyXml.append(buildParagraphXml("- (Chưa ghi nhận lượt phát biểu chi tiết).", halfPtSize = 26, italic = true, jc = "left"))
-        } else {
-            for (i in 0 until turnsArray.length()) {
-                val turn = turnsArray.optJSONObject(i) ?: continue
-                val speaker = turn.optString("speaker", "Đại biểu")
-                val langTag = turn.optString("lang", "VI").uppercase(Locale.getDefault())
-                val timestamp = turn.optString("timestamp", "")
-                val content = turn.optString("content", "")
-                val translation = turn.optString("translation", "").trim()
+            if (turnsArray.length() == 0) {
+                bodyXml.append(buildParagraphXml("- (Chưa ghi nhận nội dung văn bản).", halfPtSize = 26, italic = true, jc = "left"))
+            } else {
+                for (i in 0 until turnsArray.length()) {
+                    val turn = turnsArray.optJSONObject(i) ?: continue
+                    val speaker = turn.optString("speaker", "Người nói duy nhất")
+                    val langTag = turn.optString("lang", "VI").uppercase(Locale.getDefault())
+                    val timestamp = turn.optString("timestamp", "")
+                    val content = turn.optString("content", "")
+                    val translation = turn.optString("translation", "").trim()
 
-                val headerText = if (timestamp.isNotBlank()) {
-                    "${i + 1}. [$langTag] ${labels.speakerPrefix} $speaker (${labels.timeMarkerLabel}: $timestamp):"
-                } else {
-                    "${i + 1}. [$langTag] ${labels.speakerPrefix} $speaker:"
-                }
-                bodyXml.append(buildParagraphXml(headerText, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 80, spaceAfterDxa = 40))
+                    val headerText = if (timestamp.isNotBlank()) {
+                        "Đoạn ${i + 1} [$timestamp] • [$langTag] $speaker:"
+                    } else {
+                        "Đoạn ${i + 1} • [$langTag] $speaker:"
+                    }
+                    bodyXml.append(buildParagraphXml(headerText, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 80, spaceAfterDxa = 40))
 
-                // Mỗi dòng phát biểu gốc là 1 đoạn độc lập (Hard Return), không dùng <w:br/>
-                val sentences = content.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-                for (line in sentences) {
-                    val cleanLine = if (line.startsWith("-")) line.substring(1).trim() else line
-                    bodyXml.append(buildParagraphXml("- $cleanLine", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
-                }
+                    val sentences = content.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                    for (line in sentences) {
+                        val cleanLine = if (line.startsWith("-")) line.substring(1).trim() else line
+                        bodyXml.append(buildParagraphXml("- $cleanLine", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
+                    }
 
-                // Nếu có bản dịch đối sánh (Việt / Anh / Đức), in nghiêng chuẩn mực ngay bên dưới
-                if (translation.isNotEmpty()) {
-                    val transLines = translation.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-                    for (tLine in transLines) {
-                        val cleanTrans = if (tLine.startsWith("-")) tLine.substring(1).trim() else tLine
-                        bodyXml.append(
-                            buildParagraphXml(
-                                "- [${labels.translationPrefix}]: $cleanTrans",
-                                halfPtSize = 25,
-                                italic = true,
-                                jc = "both",
-                                firstLineIndentDxa = 425
+                    if (translation.isNotEmpty()) {
+                        val transLines = translation.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                        for (tLine in transLines) {
+                            val cleanTrans = if (tLine.startsWith("-")) tLine.substring(1).trim() else tLine
+                            bodyXml.append(
+                                buildParagraphXml(
+                                    "- [${labels.translationPrefix}]: $cleanTrans",
+                                    halfPtSize = 25,
+                                    italic = true,
+                                    jc = "both",
+                                    firstLineIndentDxa = 425
+                                )
                             )
-                        )
+                        }
                     }
                 }
             }
-        }
 
-        // 5. Mục III: Kết luận và phân công nhiệm vụ
-        bodyXml.append(buildParagraphXml(labels.section3Title, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
-
-        if (conclusionsArray.length() > 0) {
-            for (i in 0 until conclusionsArray.length()) {
-                val c = conclusionsArray.optString(i, "").trim()
-                if (c.isNotEmpty()) {
-                    val cleanC = if (c.startsWith("-")) c.substring(1).trim() else c
-                    bodyXml.append(buildParagraphXml("- $cleanC", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
+            // Mục III: Tóm tắt ý chính của bản ghi độc thoại
+            bodyXml.append(buildParagraphXml("III. TÓM TẮT CÁC Ý CHÍNH TRONG BẢN GHI ÂM", halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
+            if (conclusionsArray.length() > 0) {
+                for (i in 0 until conclusionsArray.length()) {
+                    val c = conclusionsArray.optString(i, "").trim()
+                    if (c.isNotEmpty()) {
+                        val cleanC = if (c.startsWith("-")) c.substring(1).trim() else c
+                        bodyXml.append(buildParagraphXml("- $cleanC", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
+                    }
                 }
             }
-        }
 
-        if (actionItemsArray.length() > 0) {
-            bodyXml.append(buildParagraphXml(labels.actionTableIntro, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 100, spaceAfterDxa = 60))
+            bodyXml.append(
+                buildParagraphXml(
+                    "Bản gỡ băng và tóm tắt nội dung ghi âm độc thoại (01 người nói) hoàn tất lúc $endTime./.",
+                    halfPtSize = 26,
+                    italic = true,
+                    jc = "both",
+                    spaceBeforeDxa = 160,
+                    spaceAfterDxa = 120,
+                    firstLineIndentDxa = 425
+                )
+            )
+        } else {
+            // =========================================================================
+            // CHẾ ĐỘ 2: BIÊN BẢN CUỘC HỌP NHIỀU NGƯỜI NÓI (PHÂN BIỆT CÁC GIỌNG NÓI #1, #2, #3...)
+            // =========================================================================
+            bodyXml.append(buildParagraphXml(labels.section1Title, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 120, spaceAfterDxa = 60))
+            bodyXml.append(buildParagraphXml("${labels.startTimeLabel}: $startTime.", halfPtSize = 26, bold = false, jc = "left"))
+            bodyXml.append(buildParagraphXml("${labels.venueLabel}: $venue.", halfPtSize = 26, bold = false, jc = "left"))
+            if (diarizationReport.isNotEmpty()) {
+                bodyXml.append(buildParagraphXml("Phân tích & Phân biệt giọng nói tự động ($detectedSpeakerCount người nói): $diarizationReport", halfPtSize = 26, bold = true, jc = "left"))
+            }
+            bodyXml.append(buildParagraphXml(labels.participantsLabel, halfPtSize = 26, bold = false, jc = "left"))
+            bodyXml.append(buildParagraphXml("- ${labels.chairLabel}: $chairName ($chairTitle).", halfPtSize = 26, bold = false, jc = "left"))
+            bodyXml.append(buildParagraphXml("- ${labels.secLabel}: $secName ($secTitle).", halfPtSize = 26, bold = false, jc = "left"))
+
+            if (attendeesRaw.isNotBlank()) {
+                val attLines = attendeesRaw.split("\n", ";").map { it.trim() }.filter { it.isNotEmpty() }
+                for (att in attLines) {
+                    val cleanAtt = if (att.startsWith("-")) att.substring(1).trim() else att
+                    bodyXml.append(buildParagraphXml("- ${labels.memberLabel}: $cleanAtt.", halfPtSize = 26, bold = false, jc = "left"))
+                }
+            }
+
+            // 4. Mục II: Nội dung diễn biến cuộc họp (Đa ngôn ngữ VI / EN / DE)
+            bodyXml.append(buildParagraphXml(labels.section2Title, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
+
+            if (turnsArray.length() == 0) {
+                bodyXml.append(buildParagraphXml("- (Chưa ghi nhận lượt phát biểu chi tiết).", halfPtSize = 26, italic = true, jc = "left"))
+            } else {
+                for (i in 0 until turnsArray.length()) {
+                    val turn = turnsArray.optJSONObject(i) ?: continue
+                    val speaker = turn.optString("speaker", "Người nói #1")
+                    val langTag = turn.optString("lang", "VI").uppercase(Locale.getDefault())
+                    val timestamp = turn.optString("timestamp", "")
+                    val content = turn.optString("content", "")
+                    val translation = turn.optString("translation", "").trim()
+
+                    val headerText = if (timestamp.isNotBlank()) {
+                        "${i + 1}. [$langTag] ${labels.speakerPrefix} $speaker (${labels.timeMarkerLabel}: $timestamp):"
+                    } else {
+                        "${i + 1}. [$langTag] ${labels.speakerPrefix} $speaker:"
+                    }
+                    bodyXml.append(buildParagraphXml(headerText, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 80, spaceAfterDxa = 40))
+
+                    val sentences = content.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                    for (line in sentences) {
+                        val cleanLine = if (line.startsWith("-")) line.substring(1).trim() else line
+                        bodyXml.append(buildParagraphXml("- $cleanLine", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
+                    }
+
+                    if (translation.isNotEmpty()) {
+                        val transLines = translation.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                        for (tLine in transLines) {
+                            val cleanTrans = if (tLine.startsWith("-")) tLine.substring(1).trim() else tLine
+                            bodyXml.append(
+                                buildParagraphXml(
+                                    "- [${labels.translationPrefix}]: $cleanTrans",
+                                    halfPtSize = 25,
+                                    italic = true,
+                                    jc = "both",
+                                    firstLineIndentDxa = 425
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 5. Mục III: Kết luận và phân công nhiệm vụ
+            bodyXml.append(buildParagraphXml(labels.section3Title, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 160, spaceAfterDxa = 60))
+
+            if (conclusionsArray.length() > 0) {
+                for (i in 0 until conclusionsArray.length()) {
+                    val c = conclusionsArray.optString(i, "").trim()
+                    if (c.isNotEmpty()) {
+                        val cleanC = if (c.startsWith("-")) c.substring(1).trim() else c
+                        bodyXml.append(buildParagraphXml("- $cleanC", halfPtSize = 26, bold = false, jc = "both", firstLineIndentDxa = 425))
+                    }
+                }
+            }
+
+            if (actionItemsArray.length() > 0) {
+                bodyXml.append(buildParagraphXml(labels.actionTableIntro, halfPtSize = 26, bold = true, jc = "left", spaceBeforeDxa = 100, spaceAfterDxa = 60))
+
+                bodyXml.append("<w:tbl><w:tblPr>")
+                bodyXml.append("<w:tblW w:w=\"9355\" w:type=\"dxa\"/>")
+                bodyXml.append("<w:jc w:val=\"center\"/>")
+                bodyXml.append("<w:tblBorders>")
+                for (b in listOf("top", "left", "bottom", "right", "insideH", "insideV")) {
+                    bodyXml.append("<w:$b w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"000000\"/>")
+                }
+                bodyXml.append("</w:tblBorders></w:tblPr>")
+                bodyXml.append("<w:tblGrid><w:gridCol w:w=\"680\"/><w:gridCol w:w=\"3855\"/><w:gridCol w:w=\"2000\"/><w:gridCol w:w=\"1410\"/><w:gridCol w:w=\"1410\"/></w:tblGrid>")
+
+                val headers = listOf(labels.colStt, labels.colTask, labels.colAssignee, labels.colCoord, labels.colDeadline)
+                val widths = listOf(680, 3855, 2000, 1410, 1410)
+                bodyXml.append("<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>")
+                for (idx in headers.indices) {
+                    bodyXml.append("<w:tc><w:tcPr><w:tcW w:w=\"${widths[idx]}\" w:type=\"dxa\"/><w:vAlign w:val=\"center\"/></w:tcPr>")
+                    bodyXml.append(buildParagraphXml(headers[idx], halfPtSize = 23, bold = true, jc = "center", spaceBeforeDxa = 60, spaceAfterDxa = 60))
+                    bodyXml.append("</w:tc>")
+                }
+                bodyXml.append("</w:tr>")
+
+                for (i in 0 until actionItemsArray.length()) {
+                    val item = actionItemsArray.optJSONObject(i) ?: continue
+                    val stt = (i + 1).toString()
+                    val task = item.optString("task", "")
+                    val assignee = item.optString("assignee", "")
+                    val coord = item.optString("coordinator", "")
+                    val deadline = item.optString("deadline", "")
+
+                    val rowVals = listOf(stt, task, assignee, coord, deadline)
+                    val rowAligns = listOf("center", "both", "left", "left", "center")
+                    val rowBolds = listOf(true, false, false, false, true)
+
+                    bodyXml.append("<w:tr><w:trPr><w:cantSplit/></w:trPr>")
+                    for (cIdx in rowVals.indices) {
+                        bodyXml.append("<w:tc><w:tcPr><w:tcW w:w=\"${widths[cIdx]}\" w:type=\"dxa\"/><w:vAlign w:val=\"center\"/></w:tcPr>")
+                        bodyXml.append(buildParagraphXml(rowVals[cIdx], halfPtSize = 23, bold = rowBolds[cIdx], jc = rowAligns[cIdx], spaceBeforeDxa = 60, spaceAfterDxa = 60))
+                        bodyXml.append("</w:tc>")
+                    }
+                    bodyXml.append("</w:tr>")
+                }
+                bodyXml.append("</w:tbl>")
+            }
+
+            // 6. Thời gian kết thúc & Bảng chữ ký xác nhận
+            bodyXml.append(
+                buildParagraphXml(
+                    "${labels.closingSentencePrefix}$endTime${labels.closingSentenceSuffix}",
+                    halfPtSize = 26,
+                    bold = false,
+                    jc = "both",
+                    spaceBeforeDxa = 160,
+                    spaceAfterDxa = 200,
+                    firstLineIndentDxa = 425
+                )
+            )
 
             bodyXml.append("<w:tbl><w:tblPr>")
             bodyXml.append("<w:tblW w:w=\"9355\" w:type=\"dxa\"/>")
             bodyXml.append("<w:jc w:val=\"center\"/>")
             bodyXml.append("<w:tblBorders>")
             for (b in listOf("top", "left", "bottom", "right", "insideH", "insideV")) {
-                bodyXml.append("<w:$b w:val=\"single\" w:sz=\"4\" w:space=\"0\" w:color=\"000000\"/>")
+                bodyXml.append("<w:$b w:val=\"none\" w:sz=\"0\" w:space=\"0\" w:color=\"auto\"/>")
             }
             bodyXml.append("</w:tblBorders></w:tblPr>")
-            bodyXml.append("<w:tblGrid><w:gridCol w:w=\"680\"/><w:gridCol w:w=\"3855\"/><w:gridCol w:w=\"2000\"/><w:gridCol w:w=\"1410\"/><w:gridCol w:w=\"1410\"/></w:tblGrid>")
+            bodyXml.append("<w:tblGrid><w:gridCol w:w=\"4677\"/><w:gridCol w:w=\"4678\"/></w:tblGrid>")
+            bodyXml.append("<w:tr><w:trPr><w:cantSplit/></w:trPr>")
 
-            val headers = listOf(labels.colStt, labels.colTask, labels.colAssignee, labels.colCoord, labels.colDeadline)
-            val widths = listOf(680, 3855, 2000, 1410, 1410)
-            bodyXml.append("<w:tr><w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>")
-            for (idx in headers.indices) {
-                bodyXml.append("<w:tc><w:tcPr><w:tcW w:w=\"${widths[idx]}\" w:type=\"dxa\"/><w:vAlign w:val=\"center\"/></w:tcPr>")
-                bodyXml.append(buildParagraphXml(headers[idx], halfPtSize = 23, bold = true, jc = "center", spaceBeforeDxa = 60, spaceAfterDxa = 60))
-                bodyXml.append("</w:tc>")
-            }
-            bodyXml.append("</w:tr>")
+            // Chữ ký Thư ký
+            bodyXml.append("<w:tc><w:tcPr><w:tcW w:w=\"4677\" w:type=\"dxa\"/></w:tcPr>")
+            bodyXml.append(buildParagraphXml(labels.sigSecretaryTitle, halfPtSize = 24, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 20))
+            bodyXml.append(buildParagraphXml(labels.sigSecretaryHint, halfPtSize = 22, italic = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 960))
+            bodyXml.append(buildParagraphXml(secName, halfPtSize = 25, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 0))
+            bodyXml.append("</w:tc>")
 
-            for (i in 0 until actionItemsArray.length()) {
-                val item = actionItemsArray.optJSONObject(i) ?: continue
-                val stt = (i + 1).toString()
-                val task = item.optString("task", "")
-                val assignee = item.optString("assignee", "")
-                val coord = item.optString("coordinator", "")
-                val deadline = item.optString("deadline", "")
-
-                val rowVals = listOf(stt, task, assignee, coord, deadline)
-                val rowAligns = listOf("center", "both", "left", "left", "center")
-                val rowBolds = listOf(true, false, false, false, true)
-
-                bodyXml.append("<w:tr><w:trPr><w:cantSplit/></w:trPr>")
-                for (cIdx in rowVals.indices) {
-                    bodyXml.append("<w:tc><w:tcPr><w:tcW w:w=\"${widths[cIdx]}\" w:type=\"dxa\"/><w:vAlign w:val=\"center\"/></w:tcPr>")
-                    bodyXml.append(buildParagraphXml(rowVals[cIdx], halfPtSize = 23, bold = rowBolds[cIdx], jc = rowAligns[cIdx], spaceBeforeDxa = 60, spaceAfterDxa = 60))
-                    bodyXml.append("</w:tc>")
-                }
-                bodyXml.append("</w:tr>")
-            }
-            bodyXml.append("</w:tbl>")
+            // Chữ ký Chủ trì
+            bodyXml.append("<w:tc><w:tcPr><w:tcW w:w=\"4678\" w:type=\"dxa\"/></w:tcPr>")
+            bodyXml.append(buildParagraphXml(labels.sigChairTitle, halfPtSize = 24, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 20))
+            bodyXml.append(buildParagraphXml(labels.sigChairHint, halfPtSize = 22, italic = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 960))
+            bodyXml.append(buildParagraphXml(chairName, halfPtSize = 25, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 0))
+            bodyXml.append("</w:tc></w:tr></w:tbl>")
         }
-
-        // 6. Thời gian kết thúc & Bảng chữ ký xác nhận
-        bodyXml.append(
-            buildParagraphXml(
-                "${labels.closingSentencePrefix}$endTime${labels.closingSentenceSuffix}",
-                halfPtSize = 26,
-                bold = false,
-                jc = "both",
-                spaceBeforeDxa = 160,
-                spaceAfterDxa = 200,
-                firstLineIndentDxa = 425
-            )
-        )
-
-        bodyXml.append("<w:tbl><w:tblPr>")
-        bodyXml.append("<w:tblW w:w=\"9355\" w:type=\"dxa\"/>")
-        bodyXml.append("<w:jc w:val=\"center\"/>")
-        bodyXml.append("<w:tblBorders>")
-        for (b in listOf("top", "left", "bottom", "right", "insideH", "insideV")) {
-            bodyXml.append("<w:$b w:val=\"none\" w:sz=\"0\" w:space=\"0\" w:color=\"auto\"/>")
-        }
-        bodyXml.append("</w:tblBorders></w:tblPr>")
-        bodyXml.append("<w:tblGrid><w:gridCol w:w=\"4677\"/><w:gridCol w:w=\"4678\"/></w:tblGrid>")
-        bodyXml.append("<w:tr><w:trPr><w:cantSplit/></w:trPr>")
-
-        // Chữ ký Thư ký
-        bodyXml.append("<w:tc><w:tcPr><w:tcW w:w=\"4677\" w:type=\"dxa\"/></w:tcPr>")
-        bodyXml.append(buildParagraphXml(labels.sigSecretaryTitle, halfPtSize = 24, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 20))
-        bodyXml.append(buildParagraphXml(labels.sigSecretaryHint, halfPtSize = 22, italic = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 960))
-        bodyXml.append(buildParagraphXml(secName, halfPtSize = 25, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 0))
-        bodyXml.append("</w:tc>")
-
-        // Chữ ký Chủ trì
-        bodyXml.append("<w:tc><w:tcPr><w:tcW w:w=\"4678\" w:type=\"dxa\"/></w:tcPr>")
-        bodyXml.append(buildParagraphXml(labels.sigChairTitle, halfPtSize = 24, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 20))
-        bodyXml.append(buildParagraphXml(labels.sigChairHint, halfPtSize = 22, italic = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 960))
-        bodyXml.append(buildParagraphXml(chairName, halfPtSize = 25, bold = true, jc = "center", spaceBeforeDxa = 0, spaceAfterDxa = 0))
-        bodyXml.append("</w:tc></w:tr></w:tbl>")
 
         bodyXml.append("<w:sectPr>")
         bodyXml.append("<w:pgSz w:w=\"11906\" w:h=\"16838\"/>")
