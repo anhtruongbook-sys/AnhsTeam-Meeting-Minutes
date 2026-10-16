@@ -119,6 +119,9 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
   // Chế độ ngôn ngữ xuất Biên bản Word (.docx): 'VI', 'VI_EN', 'VI_DE', 'VI_EN_DE'
   String _docLanguageMode = 'VI_EN_DE';
 
+  // Thông tin tệp đã nhập từ bộ nhớ máy
+  String _importedFileBanner = '';
+
   // Controllers cho thông tin hành chính của Biên bản cuộc họp
   final TextEditingController _govBodyCtrl = TextEditingController(text: '');
   final TextEditingController _orgNameCtrl = TextEditingController(text: "ANH'S TEAM");
@@ -299,6 +302,166 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     return 'VI';
   }
 
+  /// NHẬP FILE CÓ SẴN TRONG MÁY (AUDIO .WAV/.M4A/.MP3/.AAC HOẶC VĂN BẢN .TXT/.SRT/.JSON/.DOCX)
+  Future<void> _pickAndImportExistingFile() async {
+    try {
+      final res = await _channel.invokeMethod('pickAndImportFile');
+      if (res == null || res is! Map) return;
+
+      final info = Map<String, dynamic>.from(res);
+      final category = (info['fileCategory'] ?? '').toString();
+      final name = (info['name'] ?? '').toString();
+      final suggestedSubject = (info['suggestedSubject'] ?? '').toString();
+
+      if (category == 'AUDIO') {
+        final path = (info['path'] ?? '').toString();
+        final durSec = (info['durationSec'] as num?)?.toInt() ?? 0;
+        final sha = (info['sha256Short'] ?? '').toString();
+
+        await _refreshFiles();
+        if (path.isNotEmpty) {
+          await _channel.invokeMethod('playRecording', {'path': path});
+        }
+        await _refreshStatusOnly();
+
+        if (mounted) {
+          setState(() {
+            if (suggestedSubject.isNotEmpty) {
+              _meetingSubjectCtrl.text = suggestedSubject;
+            }
+            _importedFileBanner =
+                'Đã nạp tệp âm thanh: $name (Thời lượng: ${_formatDuration(durSec)} • SHA256: $sha). Đang phát âm thanh để gỡ băng và lập biên bản.';
+            _speakerTurns.add(
+              SpeakerTurnItem(
+                speaker: 'Nguồn tệp âm thanh nhập vào ($name)',
+                lang: _localeToShortTag(_selectedSpeechLocale),
+                timestamp: '00:00:00 - ${_formatDuration(durSec)}',
+                content:
+                    'Tệp ghi âm gốc: $name (Thời lượng: ${_formatDuration(durSec)}, Mã kiểm định SHA-256: $sha).',
+                translation: '',
+              ),
+            );
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã nhập tệp âm thanh "$name" và bắt đầu phát để trích xuất biên bản.'),
+            ),
+          );
+        }
+      } else if (category == 'DOCUMENT') {
+        final rawTurns = (info['turns'] as List?) ?? [];
+        final rawConclusions = (info['conclusions'] as List?) ?? [];
+        final rawActions = (info['actionItems'] as List?) ?? [];
+
+        final importedTurns = <SpeakerTurnItem>[];
+        for (final item in rawTurns) {
+          if (item is Map) {
+            final m = Map<String, dynamic>.from(item);
+            importedTurns.add(
+              SpeakerTurnItem(
+                speaker: (m['speaker'] ?? 'Đại biểu').toString(),
+                lang: (m['lang'] ?? 'VI').toString(),
+                timestamp: (m['timestamp'] ?? '00:00:00').toString(),
+                content: (m['content'] ?? '').toString(),
+                translation: (m['translation'] ?? '').toString(),
+              ),
+            );
+          }
+        }
+
+        final importedConclusions =
+            rawConclusions.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+
+        final importedActions = <ActionTaskItem>[];
+        for (final item in rawActions) {
+          if (item is Map) {
+            final m = Map<String, dynamic>.from(item);
+            importedActions.add(
+              ActionTaskItem(
+                task: (m['task'] ?? '').toString(),
+                assignee: (m['assignee'] ?? 'Bộ phận chuyên môn').toString(),
+                coordinator: (m['coordinator'] ?? 'Các đơn vị').toString(),
+                deadline: (m['deadline'] ?? 'Theo kế hoạch').toString(),
+              ),
+            );
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            if (suggestedSubject.isNotEmpty) {
+              _meetingSubjectCtrl.text = suggestedSubject;
+            }
+            if (importedTurns.isNotEmpty) {
+              _speakerTurns
+                ..clear()
+                ..addAll(importedTurns);
+            }
+            if (importedConclusions.isNotEmpty) {
+              _conclusions
+                ..clear()
+                ..addAll(importedConclusions);
+            }
+            if (importedActions.isNotEmpty) {
+              _actionItems
+                ..clear()
+                ..addAll(importedActions);
+            }
+            _importedFileBanner =
+                'Đã nhập tệp "$name": Trích xuất tự động ${importedTurns.length} lượt phát biểu và ${importedConclusions.length} kết luận vào Biên bản.';
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Đã nạp ${importedTurns.length} lượt phát biểu từ "$name"! Bạn có thể sang tab "Xuất Word" để xuất .DOCX ngay.',
+              ),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      }
+    } on PlatformException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi nhập tệp: ${e.message}')),
+        );
+      }
+    }
+  }
+
+  /// NẠP NHANH 1 FILE GHI ÂM ĐÃ QUÉT TRONG MÁY ĐỂ PHÁT & TẠO BIÊN BẢN
+  Future<void> _loadExistingAudioItemIntoMinutes(Map<String, dynamic> rec) async {
+    final path = (rec['path'] ?? '').toString();
+    final name = (rec['name'] ?? '').toString();
+    final durSec = (rec['durationSec'] as num?)?.toInt() ?? 0;
+    final sha = (rec['sha256Short'] ?? '').toString();
+
+    if (path.isNotEmpty) {
+      await _channel.invokeMethod('playRecording', {'path': path});
+      await _refreshStatusOnly();
+    }
+    if (mounted) {
+      setState(() {
+        _meetingSubjectCtrl.text = 'Biên bản cuộc họp (Trích xuất từ tệp ghi âm: $name)';
+        _importedFileBanner =
+            'Đang mở tệp ghi âm có sẵn: $name (${_formatDuration(durSec)} • SHA256: $sha).';
+        _speakerTurns.add(
+          SpeakerTurnItem(
+            speaker: 'Tệp ghi âm nguồn ($name)',
+            lang: _localeToShortTag(_selectedSpeechLocale),
+            timestamp: '00:00:00 - ${_formatDuration(durSec)}',
+            content:
+                'Bản ghi âm cuộc họp gốc: $name (Thời lượng: ${_formatDuration(durSec)}, SHA-256: $sha).',
+            translation: '',
+          ),
+        );
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Đã nạp "$name" vào Biên bản và bắt đầu phát âm thanh.')),
+      );
+    }
+  }
+
   Future<void> _toggleMeetingRecording() async {
     final isRec = _status['isRecording'] == true;
     if (isRec) {
@@ -357,9 +520,17 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
       return;
     }
     final elapsedSec = (_status['elapsedSeconds'] as num?)?.toInt() ?? 0;
-    final ts = _status['isRecording'] == true
-        ? _formatDuration(elapsedSec)
-        : TimeOfDay.now().format(context);
+    final playingPath = (_status['currentlyPlayingPath'] ?? '').toString();
+    final playPosSec = (_status['playbackPositionSec'] as num?)?.toInt() ?? 0;
+
+    final String ts;
+    if (_status['isRecording'] == true) {
+      ts = _formatDuration(elapsedSec);
+    } else if (playingPath.isNotEmpty) {
+      ts = _formatDuration(playPosSec);
+    } else {
+      ts = TimeOfDay.now().format(context);
+    }
 
     setState(() {
       _speakerTurns.add(
@@ -381,7 +552,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Đã thêm lượt phát biểu [${_localeToShortTag(_selectedSpeechLocale)}] vào Biên bản cuộc họp.',
+          'Đã thêm lượt phát biểu [${_localeToShortTag(_selectedSpeechLocale)}] (Mốc: $ts) vào Biên bản.',
         ),
       ),
     );
@@ -533,6 +704,9 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     final double roomGain = (_status['roomGainBoost'] as num?)?.toDouble() ?? 2.5;
     final bool isListeningSpeech = _status['isListeningSpeech'] == true;
     final String partialSpeech = (_status['latestPartialSpeech'] ?? '').toString();
+    final String playingPath = (_status['currentlyPlayingPath'] ?? '').toString();
+    final int playPosSec = (_status['playbackPositionSec'] as num?)?.toInt() ?? 0;
+    final int playDurSec = (_status['playbackDurationSec'] as num?)?.toInt() ?? 0;
 
     return DefaultTabController(
       length: 4,
@@ -562,7 +736,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      'Tiếng Việt • English • Deutsch | Chuẩn NĐ 30/2020',
+                      'Thu âm • Nhập File • Việt/Anh/Đức • Xuất NĐ 30',
                       style: TextStyle(
                         fontSize: 11.2,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -575,6 +749,11 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
             ],
           ),
           actions: [
+            IconButton(
+              tooltip: 'Nhập file có sẵn trong máy',
+              icon: const Icon(Icons.file_upload_outlined),
+              onPressed: _pickAndImportExistingFile,
+            ),
             IconButton(
               tooltip: 'Làm mới dữ liệu',
               icon: const Icon(Icons.refresh),
@@ -592,10 +771,10 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
             labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
             unselectedLabelStyle: TextStyle(fontSize: 11.5),
             tabs: [
-              Tab(icon: Icon(Icons.mic_external_on, size: 19), text: 'Thu Âm'),
+              Tab(icon: Icon(Icons.mic_external_on, size: 19), text: 'Thu & Nhập'),
               Tab(icon: Icon(Icons.edit_note, size: 19), text: 'Soạn Họp'),
               Tab(icon: Icon(Icons.description_outlined, size: 19), text: 'Xuất Word'),
-              Tab(icon: Icon(Icons.folder_copy_outlined, size: 19), text: 'Lưu Trữ'),
+              Tab(icon: Icon(Icons.folder_copy_outlined, size: 19), text: 'File Máy'),
             ],
           ),
         ),
@@ -609,6 +788,9 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               roomGain: roomGain,
               isListeningSpeech: isListeningSpeech,
               partialSpeech: partialSpeech,
+              playingPath: playingPath,
+              playPosSec: playPosSec,
+              playDurSec: playDurSec,
             ),
             _buildMinutesEditorTab(),
             _buildPreviewAndExportTab(),
@@ -619,7 +801,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     );
   }
 
-  /// TAB 1: THU ÂM PHÒNG HỌP & GỠ BĂNG ĐA NGÔN NGỮ VIỆT - ANH - ĐỨC (SINGLE-LEVEL CARD - RULE 14)
+  /// TAB 1: THU ÂM PHÒNG HỌP, NHẬP FILE CÓ SẴN TRONG MÁY & GỠ BĂNG ĐA NGÔN NGỮ (RULE 14)
   Widget _buildRecordAndTranscribeTab({
     required bool micGranted,
     required bool isRecording,
@@ -628,6 +810,9 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     required double roomGain,
     required bool isListeningSpeech,
     required String partialSpeech,
+    required String playingPath,
+    required int playPosSec,
+    required int playDurSec,
   }) {
     final cs = Theme.of(context).colorScheme;
 
@@ -648,7 +833,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               children: [
                 const Expanded(
                   child: Text(
-                    'Cần cấp quyền Microphone để thu âm phòng họp và nhận diện giọng nói Việt / Anh / Đức.',
+                    'Cần cấp quyền Microphone & Bộ nhớ để thu âm, quét file ghi âm trong máy và nhận diện giọng nói.',
                     style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -656,7 +841,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                 FilledButton.tonalIcon(
                   onPressed: () async {
                     await _channel.invokeMethod('requestPermissions');
-                    await _refreshStatusOnly();
+                    await _refreshAll();
                   },
                   icon: const Icon(Icons.mic, size: 16),
                   label: const Text('Cấp quyền'),
@@ -665,7 +850,34 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
             ),
           ),
 
-        // DUY NHẤT 1 THẺ ĐƠN CẤP (SINGLE-LEVEL CARD) CHO BỘ ĐIỀU KHIỂN THU ÂM & GỠ BĂNG ĐA NGÔN NGỮ
+        if (_importedFileBanner.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+            decoration: BoxDecoration(
+              color: cs.primaryContainer.withOpacity(0.22),
+              border: Border(
+                left: BorderSide(color: cs.primary, width: 3.5),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _importedFileBanner,
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.close, size: 17),
+                  onPressed: () => setState(() => _importedFileBanner = ''),
+                ),
+              ],
+            ),
+          ),
+
+        // DUY NHẤT 1 THẺ ĐƠN CẤP (SINGLE-LEVEL CARD) CHO BỘ THU ÂM, NHẬP FILE & GỠ BĂNG ĐA NGÔN NGỮ
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -682,24 +894,29 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Icon(
-                        isRecording ? Icons.fiber_manual_record : Icons.podcasts,
-                        color: isRecording ? Colors.redAccent : cs.primary,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        isRecording
-                            ? 'ĐANG THU ÂM: ${_formatDuration(elapsedSec)}'
-                            : 'Bàn điều khiển Thu âm Phòng họp',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                      ),
-                    ],
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Icon(
+                          isRecording ? Icons.fiber_manual_record : Icons.podcasts,
+                          color: isRecording ? Colors.redAccent : cs.primary,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            isRecording
+                                ? 'ĐANG THU ÂM: ${_formatDuration(elapsedSec)}'
+                                : 'Thu âm Phòng họp & Nhập File Có Sẵn',
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.8),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   Text(
-                    '16kHz PCM • DSP x${roomGain.toStringAsFixed(1)}',
+                    'DSP x${roomGain.toStringAsFixed(1)}',
                     style: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
@@ -721,17 +938,17 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
                 ),
               ],
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Row(
                 children: [
                   Expanded(
                     child: Text(
                       'Độ nhạy thu xa (Far-Field Gain): x${roomGain.toStringAsFixed(1)}',
-                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+                      style: const TextStyle(fontSize: 12.3, fontWeight: FontWeight.w600),
                     ),
                   ),
                   SizedBox(
-                    width: 150,
+                    width: 145,
                     child: Slider(
                       value: roomGain.clamp(1.0, 6.0),
                       min: 1.0,
@@ -746,24 +963,82 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   ),
                 ],
               ),
-              Row(
+
+              // 2 NÚT HÀNH ĐỘNG CHÍNH: THU ÂM MỚI HOẶC NHẬP FILE CÓ SẴN TRONG MÁY
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: isRecording ? Colors.red : null,
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                      ),
-                      onPressed: _toggleMeetingRecording,
-                      icon: Icon(isRecording ? Icons.stop_circle : Icons.fiber_manual_record),
-                      label: Text(
-                        isRecording ? 'Dừng & Lưu File WAV' : 'Bắt Đầu Thu Âm Cuộc Họp',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: isRecording ? Colors.red : null,
+                    ),
+                    onPressed: _toggleMeetingRecording,
+                    icon: Icon(
+                      isRecording ? Icons.stop_circle : Icons.fiber_manual_record,
+                      size: 18,
+                    ),
+                    label: Text(
+                      isRecording ? 'Dừng & Lưu WAV' : 'Thu Âm Cuộc Họp Mới',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: _pickAndImportExistingFile,
+                    icon: const Icon(Icons.folder_open, size: 18),
+                    label: const Text(
+                      'Nhập File Có Sẵn (Audio / TXT / SRT / DOCX)',
+                      style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
                 ],
               ),
+
+              // TRÌNH ĐIỀU KHIỂN PHÁT & TUA NHANH KHI ĐANG MỞ FILE ÂM THANH ĐÃ NHẬP
+              if (playingPath.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(height: 1),
+                ),
+                Row(
+                  children: [
+                    const Icon(Icons.headphones, size: 18, color: Colors.green),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Đang phát: ${playingPath.split(RegExp(r'[/\\]')).last} (${_formatDuration(playPosSec)} / ${_formatDuration(playDurSec)})',
+                        style: const TextStyle(
+                          fontSize: 12.2,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.green,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Lùi 10 giây',
+                      icon: const Icon(Icons.replay_10, size: 20),
+                      onPressed: () => _channel.invokeMethod('seekPlayback', {'deltaSeconds': -10}),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Tới 10 giây',
+                      icon: const Icon(Icons.forward_10, size: 20),
+                      onPressed: () => _channel.invokeMethod('seekPlayback', {'deltaSeconds': 10}),
+                    ),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Dừng phát',
+                      icon: const Icon(Icons.stop_circle_outlined, size: 20, color: Colors.redAccent),
+                      onPressed: () async {
+                        await _channel.invokeMethod('stopPlayback');
+                        await _refreshStatusOnly();
+                      },
+                    ),
+                  ],
+                ),
+              ],
 
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
@@ -1540,7 +1815,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     );
   }
 
-  /// TAB 4: KHO LƯU TRỮ BIÊN BẢN (.DOCX) VÀ FILE GHI ÂM (.WAV)
+  /// TAB 4: QUẢN LÝ FILE TRONG MÁY, NHẬP FILE CÓ SẴN & KHO BIÊN BẢN (.DOCX / .WAV / .M4A / .MP3)
   Widget _buildStorageArchiveTab() {
     final cs = Theme.of(context).colorScheme;
     final playingPath = (_status['currentlyPlayingPath'] ?? '').toString();
@@ -1548,6 +1823,17 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       children: [
+        // Nút chọn file bất kỳ từ bộ nhớ máy
+        FilledButton.icon(
+          onPressed: _pickAndImportExistingFile,
+          icon: const Icon(Icons.upload_file),
+          label: const Text(
+            'Chọn Tệp Từ Bộ Nhớ Máy (Audio .M4A/.WAV/.MP3 hoặc .TXT/.SRT/.DOCX/.JSON)',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ),
+        const SizedBox(height: 16),
+
         Text(
           '1. Biên bản Cuộc họp đã xuất (.DOCX) (${_exportedDocx.length})',
           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
@@ -1555,7 +1841,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
         const SizedBox(height: 6),
         if (_exportedDocx.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text(
               'Chưa có tệp .docx nào. Hãy sang tab "Xuất Word" và bấm "Xuất File .DOCX".',
               style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
@@ -1620,15 +1906,15 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
         const SizedBox(height: 20),
 
         Text(
-          '2. Tệp Ghi âm Phòng họp (.WAV 16kHz PCM) (${_recordings.length})',
+          '2. Tệp Ghi âm Phòng họp & File Có Sẵn Trong Máy (${_recordings.length})',
           style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
         ),
         const SizedBox(height: 6),
         if (_recordings.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text(
-              'Chưa có tệp ghi âm .wav nào.',
+              'Chưa có tệp âm thanh nào. Bấm nút "Chọn Tệp Từ Bộ Nhớ Máy" ở trên để nhập file ghi âm có sẵn.',
               style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant),
             ),
           )
@@ -1636,6 +1922,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           ..._recordings.map((rec) {
             final path = (rec['path'] ?? '').toString();
             final name = (rec['name'] ?? '').toString();
+            final sourceTag = (rec['sourceTag'] ?? 'THU ÂM').toString();
             final dateStr = (rec['dateFormatted'] ?? '').toString();
             final sizeKB = rec['sizeKB'] ?? 0;
             final durSec = (rec['durationSec'] as num?)?.toInt() ?? 0;
@@ -1656,19 +1943,49 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        sourceTag,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: cs.primary,
+                        ),
+                      ),
+                      Text(
+                        '$dateStr  •  ${_formatDuration(durSec)}  •  $sizeKB KB',
+                        style: TextStyle(fontSize: 11.2, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
                   Text(
                     name,
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.2),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '$dateStr  •  Thời lượng: ${_formatDuration(durSec)}  •  $sizeKB KB  •  SHA256: $sha...',
-                    style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant),
+                    'SHA-256: $sha...',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: cs.onSurfaceVariant,
+                    ),
                   ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                  Wrap(
+                    spacing: 4,
+                    alignment: WrapAlignment.end,
                     children: [
                       TextButton.icon(
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                        onPressed: () => _loadExistingAudioItemIntoMinutes(rec),
+                        icon: const Icon(Icons.post_add, size: 17),
+                        label: const Text('Nạp Tạo Biên Bản'),
+                      ),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
                         onPressed: () async {
                           if (isPlaying) {
                             await _channel.invokeMethod('stopPlayback');
@@ -1677,25 +1994,22 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                           }
                           await _refreshStatusOnly();
                         },
-                        icon: Icon(isPlaying ? Icons.stop_circle : Icons.play_circle_fill, size: 18),
-                        label: Text(isPlaying ? 'Dừng' : 'Nghe lại'),
+                        icon: Icon(
+                          isPlaying ? Icons.stop_circle : Icons.play_circle_fill,
+                          size: 18,
+                        ),
+                        label: Text(isPlaying ? 'Dừng' : 'Nghe'),
                       ),
                       TextButton.icon(
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
                         onPressed: () {
                           _channel.invokeMethod('shareFile', {
                             'path': path,
-                            'mimeType': 'audio/wav',
+                            'mimeType': 'audio/*',
                           });
                         },
                         icon: const Icon(Icons.share_outlined, size: 17),
-                        label: const Text('Chia sẻ WAV'),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 19),
-                        onPressed: () async {
-                          await _channel.invokeMethod('deleteFile', {'path': path});
-                          await _refreshFiles();
-                        },
+                        label: const Text('Chia sẻ'),
                       ),
                     ],
                   ),

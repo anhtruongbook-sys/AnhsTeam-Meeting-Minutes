@@ -62,14 +62,16 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/heads/main')
         with:
-          tag_name: v1.1.0
-          name: "Anh's TEAM - Ghi Biên Bản Cuộc Họp Đa Ngữ (Việt - Anh - Đức) v1.1.0 (Android APK)"
+          tag_name: v1.2.0
+          name: "Anh's TEAM - Ghi Biên Bản Cuộc Họp Đa Ngữ & Nhập File Có Sẵn v1.2.0 (Android APK)"
           body: |
-            ## Ứng Dụng Ghi Âm Phòng Họp & Xuất Biên Bản Cuộc Họp Đa Ngôn Ngữ (Việt - Anh - Đức) - Anh's TEAM
+            ## Ứng Dụng Ghi Âm Phòng Họp, Nhập File Có Sẵn & Xuất Biên Bản Cuộc Họp Đa Ngôn Ngữ (Việt - Anh - Đức) - Anh's TEAM
             - **Logo & Nhận diện**: Anh's TEAM (Enthusiasm and Ambition).
-            - **Gỡ băng & Nhận diện Giọng nói 3 Ngôn ngữ (`vi-VN`, `en-US`, `de-DE`)**: Chuyển đổi trực tiếp lời phát biểu Tiếng Việt, Tiếng Anh (English) và Tiếng Đức (Deutsch) kèm dấu thời gian `[HH:MM:SS]` và dòng dịch đối sánh.
-            - **Thu âm phòng họp DSP**: Thu âm `16kHz 16-bit PCM WAV` kèm bộ khuếch đại khoảng cách xa (`Far-Field Room Gain Boost x1.0 - x6.0`) và kiểm định toàn vẹn `SHA-256`.
-            - **Xuất Biên bản cuộc họp Word (`.docx`) chuẩn Nghị định 30/2020/NĐ-CP & Đa ngữ**: Hỗ trợ 4 chế độ xuất (`VI`, `VI_EN` Song ngữ Việt-Anh, `VI_DE` Song ngữ Việt-Đức, `VI_EN_DE` Đa ngữ Việt-Anh-Đức).
+            - **Nhập File Có Sẵn Trong Máy (`ExistingFileImporter`)**:
+              + Hỗ trợ chọn trực tiếp tệp âm thanh có sẵn (`.wav`, `.m4a`, `.mp3`, `.aac`, `.ogg`, `.flac`, `.amr`, `.3gp`) hoặc tự động quét thư mục `/Recordings`, `/Voice Recorder`, `/Call`, `/Download` trên máy để phát, tua nhanh `-10s/+10s`, lấy mốc thời gian thực và gỡ băng lập biên bản.
+              + Hỗ trợ nhập tệp văn bản / phụ đề / gỡ băng có sẵn (`.txt`, `.srt`, `.vtt`, `.json`, `.docx`, `.md`), tự động bóc tách lượt phát biểu, tự nhận diện ngôn ngữ (`VI` / `EN` / `DE`), kết luận và bảng phân công nhiệm vụ.
+            - **Gỡ băng & Nhận diện Giọng nói 3 Ngôn ngữ (`vi-VN`, `en-US`, `de-DE`)**.
+            - **Xuất Biên bản cuộc họp Word (`.docx`) chuẩn Nghị định 30/2020/NĐ-CP & Đa ngữ (`VI`, `VI_EN`, `VI_DE`, `VI_EN_DE`)**.
           files: build-output/AnhsTeam_MeetingMinutes.apk
           draft: false
           prerelease: false

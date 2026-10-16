@@ -1,6 +1,7 @@
 package com.anhsteam.meetingminutes
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
@@ -20,9 +21,12 @@ import java.io.File
 class MainActivity : FlutterActivity() {
 
     private val CHANNEL = "com.anhsteam.meetingminutes/native"
+    private val REQ_IMPORT_FILE = 3005
+
     private lateinit var recorderEngine: MeetingAudioRecorderEngine
     private var mediaPlayer: MediaPlayer? = null
     private var currentlyPlayingPath: String? = null
+    private var pendingImportResult: MethodChannel.Result? = null
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListeningSpeech: Boolean = false
@@ -39,6 +43,21 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getSystemStatus" -> {
+                        val playbackPosSec = try {
+                            if (mediaPlayer != null && mediaPlayer!!.isPlaying) {
+                                (mediaPlayer!!.currentPosition / 1000).coerceAtLeast(0)
+                            } else 0
+                        } catch (_: Exception) {
+                            0
+                        }
+                        val playbackDurSec = try {
+                            if (mediaPlayer != null && mediaPlayer!!.isPlaying) {
+                                (mediaPlayer!!.duration / 1000).coerceAtLeast(1)
+                            } else 0
+                        } catch (_: Exception) {
+                            0
+                        }
+
                         val status = mapOf(
                             "micPermissionGranted" to hasMicPermission(),
                             "isRecording" to recorderEngine.isRecording,
@@ -47,6 +66,8 @@ class MainActivity : FlutterActivity() {
                             "roomGainBoost" to recorderEngine.roomGainBoost.toDouble(),
                             "currentRecordingPath" to (recorderEngine.currentFilePath ?: ""),
                             "currentlyPlayingPath" to (currentlyPlayingPath ?: ""),
+                            "playbackPositionSec" to playbackPosSec,
+                            "playbackDurationSec" to playbackDurSec,
                             "isListeningSpeech" to isListeningSpeech,
                             "currentSpeechLocale" to currentSpeechLocale,
                             "latestPartialSpeech" to latestPartialSpeech,
@@ -60,6 +81,34 @@ class MainActivity : FlutterActivity() {
                     "requestPermissions" -> {
                         requestRuntimePermissions()
                         result.success(true)
+                    }
+
+                    "pickAndImportFile" -> {
+                        if (pendingImportResult != null) {
+                            result.error("BUSY", "Đang mở hộp thoại chọn tệp", null)
+                            return@setMethodCallHandler
+                        }
+                        pendingImportResult = result
+                        try {
+                            val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                addCategory(Intent.CATEGORY_OPENABLE)
+                                type = "*/*"
+                                putExtra(
+                                    Intent.EXTRA_MIME_TYPES,
+                                    arrayOf(
+                                        "audio/*",
+                                        "text/*",
+                                        "application/json",
+                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        "application/octet-stream"
+                                    )
+                                )
+                            }
+                            startActivityForResult(intent, REQ_IMPORT_FILE)
+                        } catch (e: Exception) {
+                            pendingImportResult = null
+                            result.error("ERR_PICKER", e.message ?: "Không thể mở trình chọn tệp", null)
+                        }
                     }
 
                     "updateRoomGain" -> {
@@ -125,6 +174,19 @@ class MainActivity : FlutterActivity() {
                         result.success(playAudioFile(path))
                     }
 
+                    "seekPlayback" -> {
+                        val deltaSec = call.argument<Int>("deltaSeconds") ?: 0
+                        try {
+                            val mp = mediaPlayer
+                            if (mp != null && mp.isPlaying) {
+                                val targetMs = (mp.currentPosition + deltaSec * 1000).coerceIn(0, mp.duration)
+                                mp.seekTo(targetMs)
+                            }
+                        } catch (_: Exception) {
+                        }
+                        result.success(true)
+                    }
+
                     "stopPlayback" -> {
                         stopAudioPlayback()
                         result.success(true)
@@ -167,12 +229,32 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    /**
-     * Nhận diện giọng nói Đa ngôn ngữ:
-     * - "vi-VN" (Tiếng Việt)
-     * - "en-US" (Tiếng Anh - English)
-     * - "de-DE" (Tiếng Đức - Deutsch)
-     */
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_IMPORT_FILE) {
+            val cb = pendingImportResult
+            pendingImportResult = null
+            if (cb == null) return
+
+            if (resultCode == Activity.RESULT_OK && data?.data != null) {
+                val uri = data.data!!
+                try {
+                    val importedInfo = ExistingFileImporter.importFromUri(
+                        context = applicationContext,
+                        uri = uri,
+                        recorderEngine = recorderEngine
+                    )
+                    cb.success(importedInfo)
+                } catch (e: Exception) {
+                    cb.error("ERR_IMPORT", e.message ?: "Lỗi khi đọc tệp đã chọn", null)
+                }
+            } else {
+                cb.success(null)
+            }
+        }
+    }
+
     private fun startMultilingualSpeechRecognition(localeCode: String) {
         runOnUiThread {
             try {

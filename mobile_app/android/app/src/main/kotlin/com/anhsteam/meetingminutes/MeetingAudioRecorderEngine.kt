@@ -3,9 +3,11 @@ package com.anhsteam.meetingminutes
 import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.MediaMetadataRetriever
 import android.media.MediaRecorder
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
+import android.os.Environment
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -19,9 +21,8 @@ import kotlin.math.min
 import kotlin.math.sign
 
 /**
- * Động cơ Thu âm Phòng họp Độ nét cao (16kHz 16-bit PCM WAV) kết hợp DSP Khuếch đại Khoảng cách xa (Far-Field Room Gain).
- * - Tối ưu hóa cho phòng họp có người ngồi xa điện thoại (1.5m - 4.5m).
- * - Khuếch đại thích ứng (Adaptive Far-Field Boost) cho người phát biểu ở xa và giới hạn mềm (Soft Limiter) cho người ngồi gần.
+ * Động cơ Thu âm Phòng họp Độ nét cao (16kHz 16-bit PCM WAV), Nhập file có sẵn trong máy
+ * và Quét nhanh thư mục ghi âm hệ thống (/Recordings, /Voice Recorder, /Download).
  */
 class MeetingAudioRecorderEngine(private val context: Context) {
 
@@ -276,20 +277,67 @@ class MeetingAudioRecorderEngine(private val context: Context) {
         buffer[offset + 3] = ((value shr 24) and 0xFF).toByte()
     }
 
+    fun getAudioDurationSeconds(file: File): Long {
+        return try {
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(file.absolutePath)
+            val durMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            retriever.release()
+            if (durMs > 0L) {
+                (durMs / 1000L).coerceAtLeast(1L)
+            } else {
+                ((file.length() - 44L).coerceAtLeast(0L) / 32000L).coerceAtLeast(1L)
+            }
+        } catch (_: Exception) {
+            ((file.length() - 44L).coerceAtLeast(0L) / 32000L).coerceAtLeast(1L)
+        }
+    }
+
     fun listSavedRecordings(): List<Map<String, Any>> {
-        val files = getRecordingsDir().listFiles { f -> f.isFile && f.name.endsWith(".wav", true) }
-            ?.sortedByDescending { it.lastModified() }
-            ?: emptyList()
+        val allowedExts = setOf("wav", "m4a", "mp3", "aac", "ogg", "flac", "amr", "3gp")
+        val appFiles = getRecordingsDir().listFiles { f ->
+            f.isFile && allowedExts.contains(f.extension.lowercase(Locale.US))
+        }?.toList() ?: emptyList()
+
+        // Quét thêm các thư mục ghi âm sẵn có trên điện thoại (/Recordings, /Voice Recorder, /Call)
+        val externalCandidates = mutableListOf<File>()
+        try {
+            val extRoot = Environment.getExternalStorageDirectory()
+            val dirsToScan = listOf(
+                File(extRoot, "Recordings"),
+                File(extRoot, "Recordings/Voice Recorder"),
+                File(extRoot, "Recordings/Call"),
+                File(extRoot, "Music"),
+                File(extRoot, "Download")
+            )
+            for (d in dirsToScan) {
+                if (d.exists() && d.isDirectory) {
+                    val found = d.listFiles { f ->
+                        f.isFile && allowedExts.contains(f.extension.lowercase(Locale.US))
+                    }
+                    if (found != null) {
+                        externalCandidates.addAll(found.take(15))
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+
+        val allFiles = (appFiles + externalCandidates)
+            .distinctBy { it.absolutePath }
+            .sortedByDescending { it.lastModified() }
 
         val fmt = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-        return files.map { f ->
+        return allFiles.map { f ->
             val sha = computeSha256(f)
-            val durationEstSec = ((f.length() - 44L).coerceAtLeast(0L) / 32000L).coerceAtLeast(1L)
+            val durationSec = getAudioDurationSeconds(f)
+            val isExternal = !f.absolutePath.startsWith(getRecordingsDir().absolutePath)
             mapOf(
                 "path" to f.absolutePath,
                 "name" to f.name,
-                "sizeKB" to (f.length() / 1024L),
-                "durationSec" to durationEstSec,
+                "sourceTag" to if (isExternal) "TRONG MÁY (${f.parentFile?.name ?: "Bộ nhớ"})" else "THU ÂM / ĐÃ NHẬP",
+                "sizeKB" to (f.length() / 1024L).coerceAtLeast(1L),
+                "durationSec" to durationSec,
                 "dateFormatted" to fmt.format(Date(f.lastModified())),
                 "sha256Short" to sha.take(12)
             )
