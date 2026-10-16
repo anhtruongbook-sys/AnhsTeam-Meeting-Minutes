@@ -1166,7 +1166,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                         onSelected: (_) {
                           setState(() {
                             _documentType = 'MONOLOGUE';
-                            _lastAutoDocxPath = '';
+                            _lastExportedDocxPath = '';
                           });
                         },
                       ),
@@ -1183,7 +1183,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                       onSelected: (_) {
                         setState(() {
                           _documentType = 'MEETING';
-                          _lastAutoDocxPath = '';
+                          _lastExportedDocxPath = '';
                         });
                       },
                     ),
