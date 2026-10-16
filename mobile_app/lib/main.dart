@@ -668,6 +668,26 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
     }
   }
 
+  Future<void> _shareExistingOrExportDocx() async {
+    if (_lastExportedDocxPath.isNotEmpty) {
+      final ok = await _channel.invokeMethod('shareFile', {
+        'path': _lastExportedDocxPath,
+        'mimeType':
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      if (ok == true) return;
+    }
+    await _exportDocxAndOptionallyShare(shareImmediately: true);
+  }
+
+  Future<void> _sharePlainTextMinutes() async {
+    final preview = _buildPlainTextPreview();
+    await _channel.invokeMethod('shareText', {
+      'text': preview,
+      'subject': _meetingSubjectCtrl.text.trim(),
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool micGranted = _status['micPermissionGranted'] == true;
@@ -728,14 +748,14 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           ),
           actions: [
             IconButton(
+              tooltip: 'Chia sẻ File Biên bản (.DOCX) qua Zalo / Email',
+              icon: const Icon(Icons.share),
+              onPressed: _shareExistingOrExportDocx,
+            ),
+            IconButton(
               tooltip: 'Nhập file ghi âm để tự sinh biên bản',
               icon: const Icon(Icons.file_upload_outlined),
               onPressed: _pickAndImportExistingFile,
-            ),
-            IconButton(
-              tooltip: 'Làm mới dữ liệu',
-              icon: const Icon(Icons.refresh),
-              onPressed: _refreshAll,
             ),
             IconButton(
               tooltip: 'Chuyển chế độ Sáng/Tối',
@@ -901,15 +921,21 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                     ),
                   ),
                 ],
-                if (!isAutoProcessing && _lastExportedDocxPath.isNotEmpty) ...[
-                  const SizedBox(height: 8),
+                if (!isAutoProcessing) ...[
+                  const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 8,
                     children: [
                       FilledButton.icon(
-                        onPressed: () => _exportDocxAndOptionallyShare(shareImmediately: true),
+                        onPressed: _shareExistingOrExportDocx,
                         icon: const Icon(Icons.share, size: 17),
-                        label: const Text('Gửi File Word (.DOCX) Vừa Tự Sinh'),
+                        label: const Text('Chia Sẻ File Biên Bản (.DOCX)'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _sharePlainTextMinutes,
+                        icon: const Icon(Icons.send_outlined, size: 17),
+                        label: const Text('Chia Sẻ Văn Bản (Zalo/Text)'),
                       ),
                     ],
                   ),
@@ -990,7 +1016,7 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
 
               const SizedBox(height: 8),
 
-              // NÚT PHỤ: THU ÂM MỚI PHÒNG HỌP (KHI DỪNG CŨNG TỰ ĐỘNG GỠ BĂNG)
+              // NÚT PHỤ: THU ÂM MỚI PHÒP HỌP (KHI DỪNG CŨNG TỰ ĐỘNG GỠ BĂNG)
               Row(
                 children: [
                   Expanded(
@@ -1023,6 +1049,33 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                   color: Colors.redAccent,
                 ),
               ],
+
+              const SizedBox(height: 8),
+
+              // NÚT CHIA SẺ FILE BIÊN BẢN (.DOCX) TRỰC TIẾP TRÊN MÀN HÌNH CHÍNH
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _shareExistingOrExportDocx,
+                      icon: const Icon(Icons.share, size: 18),
+                      label: const Text(
+                        'Chia Sẻ File Biên Bản (.DOCX)',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.8),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _sharePlainTextMinutes,
+                    icon: const Icon(Icons.send_outlined, size: 17),
+                    label: const Text(
+                      'Gửi Text',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+                    ),
+                  ),
+                ],
+              ),
 
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 10),
@@ -1591,14 +1644,19 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
           runSpacing: 8,
           children: [
             FilledButton.icon(
-              onPressed: () => _exportDocxAndOptionallyShare(shareImmediately: false),
-              icon: const Icon(Icons.file_download_outlined, size: 18),
-              label: Text('Xuất File .DOCX ($_docLanguageMode)'),
+              onPressed: () => _exportDocxAndOptionallyShare(shareImmediately: true),
+              icon: const Icon(Icons.share, size: 18),
+              label: Text('Chia Sẻ File .DOCX ($_docLanguageMode)'),
             ),
             FilledButton.tonalIcon(
-              onPressed: () => _exportDocxAndOptionallyShare(shareImmediately: true),
-              icon: const Icon(Icons.share_outlined, size: 18),
-              label: const Text('Xuất & Gửi Zalo / Email'),
+              onPressed: () => _exportDocxAndOptionallyShare(shareImmediately: false),
+              icon: const Icon(Icons.file_download_outlined, size: 18),
+              label: const Text('Lưu File .DOCX Vào Máy'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _sharePlainTextMinutes,
+              icon: const Icon(Icons.send_outlined, size: 18),
+              label: const Text('Chia Sẻ Văn Bản (Text)'),
             ),
             OutlinedButton.icon(
               onPressed: () {
@@ -1736,7 +1794,8 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                       ],
                     ),
                   ),
-                  TextButton.icon(
+                  FilledButton.tonalIcon(
+                    style: FilledButton.styleFrom(visualDensity: VisualDensity.compact),
                     onPressed: () {
                       _channel.invokeMethod('shareFile', {
                         'path': path,
@@ -1744,8 +1803,8 @@ class _MeetingMinutesHomeScreenState extends State<MeetingMinutesHomeScreen> {
                             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                       });
                     },
-                    icon: const Icon(Icons.share, size: 17),
-                    label: const Text('Gửi'),
+                    icon: const Icon(Icons.share, size: 16),
+                    label: const Text('Chia sẻ'),
                   ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline, size: 19),

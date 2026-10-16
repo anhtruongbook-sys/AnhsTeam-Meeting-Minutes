@@ -286,6 +286,13 @@ class MainActivity : FlutterActivity() {
                         result.success(shared)
                     }
 
+                    "shareText" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        val subject = call.argument<String>("subject") ?: "Biên bản cuộc họp - Anh's TEAM"
+                        val shared = sharePlainText(text, subject)
+                        result.success(shared)
+                    }
+
                     else -> result.notImplemented()
                 }
             }
@@ -417,20 +424,59 @@ class MainActivity : FlutterActivity() {
 
     private fun shareFileViaProvider(path: String, mimeType: String): Boolean {
         return try {
-            val file = File(path)
+            var file = File(path)
+            if (!file.exists()) {
+                // Nếu path truyền vào là đường dẫn hiển thị /Download/..., tự động tìm file thật trong thư mục biên bản của app
+                val baseName = path.substringAfterLast('/')
+                val candidate = File(recorderEngine.getMinutesDir(), baseName)
+                if (candidate.exists()) {
+                    file = candidate
+                } else {
+                    val latest = recorderEngine.getMinutesDir()
+                        .listFiles { f -> f.isFile && f.name.endsWith(".docx", ignoreCase = true) }
+                        ?.maxByOrNull { it.lastModified() }
+                    if (latest != null && latest.exists()) {
+                        file = latest
+                    }
+                }
+            }
             if (!file.exists()) return false
+
             val uri = FileProvider.getUriForFile(
                 this,
                 "${applicationContext.packageName}.fileprovider",
                 file
             )
+            val clip = android.content.ClipData.newRawUri(file.name, uri)
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = mimeType
+                clipData = clip
                 putExtra(Intent.EXTRA_STREAM, uri)
                 putExtra(Intent.EXTRA_SUBJECT, file.name)
+                putExtra(Intent.EXTRA_TITLE, file.name)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            val chooser = Intent.createChooser(shareIntent, "Chia sẻ Biên bản cuộc họp qua").apply {
+            val chooser = Intent.createChooser(shareIntent, "Chia sẻ File Biên bản (${file.name}) qua").apply {
+                clipData = clip
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(chooser)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun sharePlainText(text: String, subject: String): Boolean {
+        if (text.isBlank()) return false
+        return try {
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, subject)
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            val chooser = Intent.createChooser(shareIntent, "Chia sẻ Nội dung Biên bản qua").apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(chooser)
